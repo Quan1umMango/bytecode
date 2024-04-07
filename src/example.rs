@@ -1,4 +1,7 @@
  
+fn example() {
+
+
     let mut vm = VM::new();
     
 
@@ -52,3 +55,4 @@
     let mut new_vm = VM::new();
     let _ = new_vm.read_from_file("yeah.bc");
     new_vm.eval();
+}

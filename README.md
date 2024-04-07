@@ -50,6 +50,10 @@ label loop:
 endlabel
 
 ```
-
+Look into ``examples`` for more examples.
+Note: make sure to run in the directory of the file you want to run. In other words, run the program in the ``examples`` folder to test them out. This issue will be fixed in the future. 
 ## Usage
-In `main.rs` plug in your file name and run. This is a makeshift solution, but in the future there will a cli interface to dynamically run the program.
+```
+bytecode <file-name>.basm
+```
+

@@ -1,11 +1,14 @@
 use crate::tokens::*;
+use crate::constants_and_types::*;
+use crate::parse_jump;
 
 use std::collections::HashMap;
 
 pub struct Parser {
     tokens:Vec<Token>,
     index: usize,
-    labels: HashMap<String,NodeLabel>
+    pub  labels: HashMap<String,NodeLabel>,
+    pub builtins: Vec<NodeBuiltin>,
 }
 
 
@@ -13,56 +16,72 @@ pub struct Parser {
 pub enum NodeExpr {
     NodeExprRegister {value:Token},
     NodeExprIntLit   {value: Token},
+    NodeExprFloat    {value: Token},
     NodeExprLabelName {value: Token},
+    NodeExprStringLit {value:Token},
 }
 
 #[derive(Debug,Clone)]
-pub enum NodeInstruction {
+pub enum NodeBuiltin {
+    NodeBuiltinImport {value:NodeExpr},
+}
+
+#[derive(Debug,Clone)]
+pub enum NodeInstruction  {
     NodeInstructionHalt,
-    NodeInstructionMov {lhs:NodeExpr,rhs:NodeExpr},
-    NodeInstructionAdd {lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionSub{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionDisplay{value:NodeExpr},
-    NodeInstructionPush{value:NodeExpr},
-    NodeInstructionPop{value:NodeExpr},
+    NodeInstructionMov    {lhs:NodeExpr,rhs:NodeExpr},
+    NodeInstructionAdd    {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionSub    {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionDisplay {value:NodeExpr},
+    NodeInstructionPush   {value:NodeExpr},
+    NodeInstructionPop    {value:NodeExpr},
 
-    NodeInstructionJump{value:NodeExpr},
-    NodeInstructionJumpIfZero{value:NodeExpr},
-    NodeInstructionJumpIfNotZero{value:NodeExpr},
-    NodeInstructionJumpIfEqual{value:NodeExpr},
-    NodeInstructionJumpIfNotEqual{value:NodeExpr},
-    NodeInstructionJumpIfGreater{value:NodeExpr},
-    NodeInstructionJumpIfLess{value:NodeExpr},
+    NodeInstructionJump           {value:NodeExpr},
+    NodeInstructionJumpIfZero     {value:NodeExpr},
+    NodeInstructionJumpIfNotZero  {value:NodeExpr},
+    NodeInstructionJumpIfEqual    {value:NodeExpr},
+    NodeInstructionJumpIfNotEqual {value:NodeExpr},
+    NodeInstructionJumpIfGreater  {value:NodeExpr},
+    NodeInstructionJumpIfLess     {value:NodeExpr},
 
-    NodeInstructionCompare{lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionCompare  {lhs:NodeExpr, rhs:NodeExpr},
 
-    NodeInstructionGetFromStack{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionGetFromStackPointer{lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionGetFromStack        {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionGetFromStackPointer {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionSetFromStackPointer {lhs:NodeExpr, rhs:NodeExpr},
 
-    NodeInstructionMalloc{value:NodeExpr},
-    NodeInstructionGetMemory{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionSetMemory{lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionMalloc    {value:NodeExpr},
+    NodeInstructionGetMemory {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionSetMemory {lhs:NodeExpr, rhs:NodeExpr},
 
     NodeInstructionReturn,
 
-    NodeInstructionMul{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionDiv{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionMod{lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionMul  {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionDiv  {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionMod  {lhs:NodeExpr, rhs:NodeExpr},
 
-    NodeInstructionOr{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionAnd{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionNot{value: NodeExpr},
-    NodeInstructionXor{lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionNand{lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionOr   {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionAnd  {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionNot  {value: NodeExpr},
+    NodeInstructionXor  {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionNand {lhs:NodeExpr, rhs:NodeExpr},
 
-    NodeInstructionTruncateStack{value:NodeExpr},
+    NodeInstructionTruncateStack {value:NodeExpr},
 
+    NodeInstructionMovf {lhs:NodeExpr,rhs:NodeExpr},
+    NodeInstructionAddf {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionSubf {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionMulf {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionDivf {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionModf {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionDisplayf {value:NodeExpr},
+    NodeInstructionDisplayChar {value: NodeExpr},
 }
 
 
 #[derive(Debug,Clone)]
 pub struct NodeLabel {
-   pub insts:Vec<NodeInstruction>
+    pub insts:Vec<NodeInstruction>
 }
 
 
@@ -71,10 +90,12 @@ impl  Parser {
         Self {
             tokens,
             index:0,
-            labels:HashMap::new()
+            labels:HashMap::new(),
+            builtins:Vec::new(),
         }
     }
 
+  
     pub fn parse_halt(&mut self) -> Option<NodeInstruction> {
         if let Some(_halt_tok) = self.try_consume(TokenType::Halt) {
             return Some(NodeInstruction::NodeInstructionHalt);
@@ -82,35 +103,49 @@ impl  Parser {
         None
     }
 
+    #[allow(unused_assignments)]
     pub fn parse_mov(&mut self) -> Option<NodeInstruction> {
-
         if let Some(_mov_tok) = self.try_consume(TokenType::Mov) {
+            let mut lhs:Option<NodeExpr> = None;
+
             if let Some(register_tok) = self.try_consume(TokenType::Register) {
-                   if self.try_consume(TokenType::Comma).is_none() {
-                    println!("Expected Comma, found:{:?}",self.peek_token());
-                }
-                if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
-                    return Some(NodeInstruction::NodeInstructionMov {
-                        lhs: NodeExpr::NodeExprRegister{value:register_tok},
-                        rhs:NodeExpr::NodeExprIntLit{value:int_lit}
-                    });
-                }else if let Some(register2_tok) = self.try_consume(TokenType::Register) {
-                    return Some(NodeInstruction::NodeInstructionMov {
-                        lhs: NodeExpr::NodeExprRegister{value:register_tok},
-                        rhs:NodeExpr::NodeExprRegister{value:register2_tok}
-                    });
-                }else {
-                    println!("Expected either register or number value to push into register.");
+                lhs = Some(NodeExpr::NodeExprRegister{value:register_tok});
+            }else if let Some(int_tok) = self.try_consume(TokenType::IntLit) {
+                let register_tok = get_register_from_number(int_tok.value.clone().unwrap().parse::<i32>().unwrap());
+                if register_tok.is_none() {
+                    println!("Invalid Register.");
                     std::process::exit(1);
-                }
+                }        
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int_tok})
+            }else {
+                println!("Expected either register or register number to move into.");
+                std::process::exit(1);
+            }
+            let lhs = lhs.unwrap();
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }    
+
+            if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+                return Some(NodeInstruction::NodeInstructionMov {
+                    lhs,
+                    rhs:NodeExpr::NodeExprIntLit{value:int_lit}
+                });
+            }else if let Some(register2_tok) = self.try_consume(TokenType::Register) {
+                return Some(NodeInstruction::NodeInstructionMov {
+                    lhs,
+                    rhs:NodeExpr::NodeExprRegister{value:register2_tok}
+                });
 
             }else {
-                println!("Expected register to move into.");
+                println!("Expected either register or number value to move.");
                 std::process::exit(1);
             }
         }
-        None
+        None 
     }
+
 
 
 
@@ -182,7 +217,7 @@ impl  Parser {
     pub fn parse_mul(&mut self) -> Option<NodeInstruction> {
         if let Some(_mul_tok) = self.try_consume(TokenType::Mul) {
             if let Some(register_tok) = self.try_consume(TokenType::Register) {
-   if self.try_consume(TokenType::Comma).is_none() {
+                if self.try_consume(TokenType::Comma).is_none() {
                     println!("Expected Comma, found:{:?}",self.peek_token());
                 }
                 if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
@@ -209,8 +244,8 @@ impl  Parser {
             None
         }
     }
-   
-      pub fn parse_div(&mut self) -> Option<NodeInstruction> {
+
+    pub fn parse_div(&mut self) -> Option<NodeInstruction> {
         if let Some(_div_tok) = self.try_consume(TokenType::Div) {
             if let Some(register_tok) = self.try_consume(TokenType::Register) {
                 if self.try_consume(TokenType::Comma).is_none() {
@@ -240,8 +275,8 @@ impl  Parser {
             None
         }
     }
-   
-      pub fn parse_mod(&mut self) -> Option<NodeInstruction> {
+
+    pub fn parse_mod(&mut self) -> Option<NodeInstruction> {
         if let Some(_mod_tok) = self.try_consume(TokenType::Mod) {
             if let Some(register_tok) = self.try_consume(TokenType::Register) {
                 if self.try_consume(TokenType::Comma).is_none() {
@@ -348,9 +383,9 @@ impl  Parser {
                 }
             }
             Nand => {
-self.consume_token();
+                self.consume_token();
 
-                    if let Some(register_tok) = self.try_consume(TokenType::Register) {
+                if let Some(register_tok) = self.try_consume(TokenType::Register) {
                     if self.try_consume(TokenType::Comma).is_none() {
                         println!("Expected Comma, found:{:?}",self.peek_token());
                     }
@@ -378,7 +413,7 @@ self.consume_token();
             Xor => {
 
                 self.consume_token();
-        if let Some(register_tok) = self.try_consume(TokenType::Register) {
+                if let Some(register_tok) = self.try_consume(TokenType::Register) {
                     if self.try_consume(TokenType::Comma).is_none() {
                         println!("Expected Comma, found:{:?}",self.peek_token());
                     }
@@ -421,9 +456,45 @@ self.consume_token();
                 println!("Expected register or number to display.");
                 std::process::exit(1);
             }
-         }
+        }
         None
     }
+    pub fn parse_displayf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_display_tok) = self.try_consume(TokenType::Displayf) {
+            if let Some(int_lit) = self.try_consume(TokenType::Float) {
+                return Some(NodeInstruction::NodeInstructionDisplayf {
+                    value:NodeExpr::NodeExprFloat{value:int_lit}
+                });
+            }else if let Some(reg) = self.try_consume(TokenType::FloatRegister) {
+                return Some(NodeInstruction::NodeInstructionDisplayf {
+                    value:NodeExpr::NodeExprRegister{value:reg}
+                });
+            }else {
+                println!("Expected register or floating pointer number to display.");
+                std::process::exit(1);
+            }
+        }
+        None
+    }
+
+    pub fn parse_displayc(&mut self) -> Option<NodeInstruction> {
+        if let Some(_display_tok) = self.try_consume(TokenType::DisplayChar) {
+            if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+                return Some(NodeInstruction::NodeInstructionDisplayChar {
+                    value:NodeExpr::NodeExprFloat{value:int_lit}
+                });
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                return Some(NodeInstruction::NodeInstructionDisplayChar {
+                    value:NodeExpr::NodeExprRegister{value:reg}
+                });
+            }else {
+                println!("Expected register or number to displayc.");
+                std::process::exit(1);
+            }
+        }
+        None
+    }
+
     pub fn parse_push(&mut self) -> Option<NodeInstruction> {
         if let Some(_push_tok) = self.try_consume(TokenType::Push) {
             if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
@@ -438,147 +509,137 @@ self.consume_token();
                 println!("Expected register or number to push.");
                 std::process::exit(1);
             }
-         }
+        }
         None
     }
 
     pub fn parse_pop(&mut self) -> Option<NodeInstruction> {
         if let Some(_pop_tok) = self.try_consume(TokenType::Pop) {
-        if let Some(reg) = self.try_consume(TokenType::Register) {
+            if let Some(reg) = self.try_consume(TokenType::Register) {
                 return Some(NodeInstruction::NodeInstructionPop {
                     value:NodeExpr::NodeExprRegister{value:reg}
                 });
-            }else {
-                println!("Expected register to pop.");
+            }      
+            else {
+                println!("Expected register to pop into, found {:?}",self.peek_token());
                 std::process::exit(1);
             }
-         }
+        }
         None
     }
 
     pub fn parse_jump(&mut self) -> Option<NodeInstruction> {
         if let Some(_jump_tok) = self.try_consume(TokenType::Jump) {
-           
+
             if let Some(reg) = self.try_consume(TokenType::Ident) {
                 return Some(NodeInstruction::NodeInstructionJump {
                     value:NodeExpr::NodeExprLabelName{value:reg}
                 });
-            }else {
-                println!("Expected register or number to jump.");
+            }else if let Some(ad) = self.try_consume(TokenType::IntLit) {
+                let int = ad.value.as_ref().unwrap().parse::<i32>().unwrap();
+                if int < 0 {
+                    println!("Expected label or instruction number to jump, found negative integer.");
+                    std::process::exit(1);
+                }
+                return Some(NodeInstruction::NodeInstructionJump {
+                    value:NodeExpr::NodeExprIntLit{value:ad}
+                })
+
+            }
+            else {
+                println!("Expected label or instruction number to jump.");
                 std::process::exit(1);
             }
-         }
+        }
         None
     }
 
-  pub fn parse_jump_zero(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfZero) {
-           
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-                return Some(NodeInstruction::NodeInstructionJumpIfZero {
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
+    pub fn parse_jump_zero(&mut self) -> Option<NodeInstruction> {
+        let jmp_token_type=  TokenType::JumpIfZero;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfZero {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
+        None
+
+    }
+
+    pub fn parse_jump_nzero(&mut self) -> Option<NodeInstruction> {
+        let jmp_token_type=  TokenType::JumpIfNotZero;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfNotZero {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
         None
     }
 
-  pub fn parse_jump_nzero(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfNotZero) {
-           
-          
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-
-                return Some(NodeInstruction::NodeInstructionJumpIfNotZero {
-                   
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
-        None
-    }
-
-  pub fn parse_jump_equal(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfEqual) {
-           
-            
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-                return Some(NodeInstruction::NodeInstructionJumpIfEqual { 
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
-        None
+    pub fn parse_jump_equal(&mut self) -> Option<NodeInstruction> {
+        let jmp_token_type=  TokenType::JumpIfEqual;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfEqual {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
+        None  
     }
 
 
-  pub fn parse_jump_nequal(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfNotEqual) {
-           
-            
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-                return Some(NodeInstruction::NodeInstructionJumpIfNotEqual {
-               
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
-        None
+    pub fn parse_jump_nequal(&mut self) -> Option<NodeInstruction> {
+        let jmp_token_type=  TokenType::JumpIfNotEqual;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfNotEqual {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
+        None    
     }
 
     pub fn parse_jump_greater(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfGreater) {
-           
-            
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-                return Some(NodeInstruction::NodeInstructionJumpIfGreater {
-               
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
-        None
+        let jmp_token_type=  TokenType::JumpIfGreater;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfGreater {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
+        None    
     }
 
-pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
-        if let Some(_jump_tok) = self.try_consume(TokenType::JumpIfLess) {
-           
-            
-            if let Some(reg) = self.try_consume(TokenType::Ident) {
-                return Some(NodeInstruction::NodeInstructionJumpIfLess {
-               
-                    value:NodeExpr::NodeExprLabelName{value:reg}
-
-                });
-            }else {
-                println!("Expected register or number to jump.");
-                std::process::exit(1);
-            }
-         }
-        None
+    pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
+        let jmp_token_type=  TokenType::JumpIfLess;
+        let mut jmp_node_inst = NodeInstruction::NodeInstructionJumpIfLess {
+            value:NodeExpr::NodeExprLabelName{value:Token {token_type:TokenType::IntLit,value:Some("0".to_string())}}
+        };
+        let mut try_consume = |t| {self.try_consume(t)};
+        let res = parse_jump!(jmp_token_type,jmp_node_inst,try_consume); 
+        if res.is_ok(){
+            return Some(jmp_node_inst);
+        }
+        None   
     }
 
     pub fn parse_compare(&mut self) -> Option<NodeInstruction> {
         if let Some(_cmp_tok) = self.try_consume(TokenType::Compare) {
             if let Some(reg1) = self.try_consume(TokenType::Register) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}",self.peek_token());
+                }
 
                 if let Some(reg2) = self.try_consume(TokenType::Register) {
                     return Some(NodeInstruction::NodeInstructionCompare {
@@ -597,13 +658,17 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 }
 
             }else if let Some(int) = self.try_consume(TokenType::IntLit) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}",self.peek_token());
+                }
+
                 if let Some(reg) = self.try_consume(TokenType::Register) {
-                     return Some(NodeInstruction::NodeInstructionCompare {
+                    return Some(NodeInstruction::NodeInstructionCompare {
                         lhs:NodeExpr::NodeExprIntLit{value:int},
                         rhs: NodeExpr::NodeExprRegister{value:reg}
                     })
                 }else if let Some(int2) = self.try_consume(TokenType::IntLit) {
-                        return Some(NodeInstruction::NodeInstructionCompare {
+                    return Some(NodeInstruction::NodeInstructionCompare {
                         lhs:NodeExpr::NodeExprIntLit{value:int},
                         rhs: NodeExpr::NodeExprIntLit{value:int2}
                     })
@@ -624,7 +689,7 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
         if let Some(_getstack_tok) = self.try_consume(TokenType::GetFromStack) {
             let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
-                       if let Some(int) = self.try_consume(TokenType::IntLit) {
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
                 lhs = Some(NodeExpr::NodeExprIntLit{value:int});
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
                 lhs =Some(NodeExpr::NodeExprRegister{value:reg});
@@ -632,6 +697,10 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 println!("Expected either integer or register to get from stack");
                 std::process::exit(1);
             }
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+            }
+
 
             if let Some(int) = self.try_consume(TokenType::IntLit) {
                 rhs = Some(NodeExpr::NodeExprIntLit{value:int});
@@ -649,9 +718,9 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
 
     pub fn parse_getfromsp(&mut self) -> Option<NodeInstruction> {
         if let Some(_getsp_tok) = self.try_consume(TokenType::GetFromStackPointer) {
-             let mut lhs:Option<NodeExpr> = None;
+            let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
-                       if let Some(int) = self.try_consume(TokenType::IntLit) {
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
                 lhs = Some(NodeExpr::NodeExprIntLit{value:int});
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
                 lhs =Some(NodeExpr::NodeExprRegister{value:reg});
@@ -659,9 +728,16 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 println!("Expected either integer or register to get from stack pointer.");
                 std::process::exit(1);
             }
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+            }
+
 
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else if let Some(int) = self.try_consume(TokenType::IntLit) {
+                rhs =Some(NodeExpr::NodeExprRegister{value:int});
+
             }else {
                 println!("Expected register to get from stack pointer. (2nd argument)");
                 std::process::exit(1);
@@ -671,6 +747,37 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
         }
         None
     }
+    #[allow(unused_assignments)]
+    pub fn parse_setfromsp(&mut self) -> Option<NodeInstruction> {
+        if let Some(_setsp_tok) = self.try_consume(TokenType::SetFromStackPointer) {
+            let mut lhs:Option<NodeExpr> = None;
+            let mut rhs: Option<NodeExpr> = None;
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                lhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register to set from stack pointer.");
+                std::process::exit(1);
+            }
+
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                rhs =Some(NodeExpr::NodeExprRegister{value:reg});
+
+            }else {
+                println!("Expected register literal to set from stack pointer. (2nd argument)\n Found: {:?}",self.consume_token());
+                std::process::exit(1);
+            }
+            return Some(NodeInstruction::NodeInstructionSetFromStackPointer{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+        }
+        None
+    }
+
 
     pub fn parse_truncate_stack(&mut self) -> Option<NodeInstruction> {
         if let Some(_tok) = self.try_consume(TokenType::TruncateStack) {
@@ -692,24 +799,26 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
 
     pub fn parse_malloc(&mut self) -> Option<NodeInstruction> {
         if let Some(_malloc_tok) = self.try_consume(TokenType::Malloc) {
-            let mut lhs:Option<NodeExpr> = None;
             if let Some(int) = self.try_consume(TokenType::IntLit) {
-                lhs = Some(NodeExpr::NodeExprIntLit{value:int});
+                return Some(NodeInstruction::NodeInstructionMalloc {
+                    value: NodeExpr::NodeExprRegister{value:int}
+                })               
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
-                lhs =Some(NodeExpr::NodeExprRegister{value:reg});
+                return Some(NodeInstruction::NodeInstructionMalloc {
+                    value: NodeExpr::NodeExprRegister{value:reg}
+                })
             }else {
                 println!("Expected either integer or register to allocate memory.");
                 std::process::exit(1);
             }        
-            return Some(NodeInstruction::NodeInstructionMalloc {value: lhs.unwrap()});
         }
         None
     }
     pub fn parse_getmem(&mut self) -> Option<NodeInstruction> {
         if let Some(_getmem_tok) = self.try_consume(TokenType::GetMemory) {
-          let mut lhs:Option<NodeExpr> = None;
+            let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
-           
+
             if let Some(int) = self.try_consume(TokenType::IntLit) {
                 lhs = Some(NodeExpr::NodeExprIntLit{value:int});
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
@@ -719,6 +828,9 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 std::process::exit(1);
             }
 
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+            }
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
             }else {
@@ -744,6 +856,9 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 std::process::exit(1);
             }
 
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+            }
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
             }else {
@@ -757,6 +872,13 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
 
     }
 
+    pub fn parse_ret(&mut self) -> Option<NodeInstruction> {
+        if let Some(_ret) = self.try_consume(TokenType::Return) {
+            return Some(NodeInstruction::NodeInstructionReturn)
+        }   
+        None
+    }
+
     pub fn parse_label(&mut self) -> Option<(String,NodeLabel)> {
         if let Some(_label_tok) = self.try_consume(TokenType::Label) {
             if let Some(label_name) = self.try_consume(TokenType::Ident) {
@@ -765,10 +887,6 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                 }
                 if let Some(_colon) = self.try_consume(TokenType::Colon) {
                     let mut label_inst:Vec<NodeInstruction> = Vec::new();
-                    while let Some(inst) = self.parse_inst() {
-                        label_inst.push(inst);
-                    }
-
                     while let Some(tok) = self.peek_token() {
                         if tok.token_type == TokenType::Return {
                             let inst = NodeInstruction::NodeInstructionReturn;
@@ -780,12 +898,35 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
                             return Some((label_name.value.unwrap(),NodeLabel {
                                 insts:label_inst
                             }));
-                        } else {
+                        }else if tok.token_type == TokenType::Label {
+                            if let Some((name,mut label)) = self.parse_label() {
+                                let jmp_inst = NodeInstruction::NodeInstructionJump {
+                                    value: NodeExpr::NodeExprLabelName {
+                                        value: Token {
+                                            token_type: TokenType::Ident,
+                                            value: Some(name.clone()),
+                                        }
+                                    }
+
+                                };
+                                label.insts.push(NodeInstruction::NodeInstructionReturn);
+                                label_inst.push(jmp_inst);
+                                self.labels.insert(name,label);
+                            }else {
+                                println!("Statement is out of a label. {:?}",self.peek_token());
+                                std::process::exit(1);
+                            }
+
+                        }else if let Some(inst) = self.parse_inst() {
+                            label_inst.push(inst);
+                        }
+                        else {
                             println!("Undefined Instruction. {:?}",tok);
                             std::process::exit(1);
                         }
 
                     }
+
                     if let Some(tok) = self.peek_token_back(1) {
                         if tok.token_type == TokenType::EndLabel {
                             return Some((label_name.value.unwrap(),NodeLabel {
@@ -810,8 +951,209 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
         None
     }
 
+
+
+    #[allow(unused_assignments)]
+    pub fn parse_movf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_movf_tok) = self.try_consume(TokenType::Movf) {
+            let mut lhs:Option<NodeExpr> = None;
+
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                lhs = Some(NodeExpr::NodeExprRegister{value:register_tok});
+            }else if let Some(int_tok) = self.try_consume(TokenType::Float) {
+                let register_tok = get_register_from_number(int_tok.value.clone().unwrap().parse::<i32>().unwrap());
+                if register_tok.is_none() {
+                    println!("Invalid Register.");
+                    std::process::exit(1);
+                }        
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int_tok})
+            }else {
+                println!("Expected either register or register number to move flaot into. \nGot:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+            let lhs = lhs.unwrap();
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }    
+
+            if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                return Some(NodeInstruction::NodeInstructionMovf {
+                    lhs,
+                    rhs:NodeExpr::NodeExprFloat{value:f_lit}
+                });
+            }else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                return Some(NodeInstruction::NodeInstructionMovf {
+                    lhs,
+                    rhs:NodeExpr::NodeExprRegister{value:register2_tok}
+                });
+
+            }else {
+                println!("Expected either register or number value to move float into.");
+                std::process::exit(1);
+            }
+        }
+        None 
+    }
+
+
+
+
+    pub fn parse_addf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_add_tok) = self.try_consume(TokenType::Addf) {
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}",self.peek_token());
+                }
+                if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                    return Some(NodeInstruction::NodeInstructionAddf {
+                        lhs: NodeExpr::NodeExprRegister{value:register_tok},
+                        rhs:NodeExpr::NodeExprFloat{value:f_lit}
+                    });
+                }else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                    return Some(NodeInstruction::NodeInstructionAddf {
+                        lhs: NodeExpr::NodeExprRegister{value:register_tok},
+                        rhs:NodeExpr::NodeExprRegister{value:register2_tok}
+                    });
+                }else {
+                    println!("Expected either register or number value to add into register.");
+                    std::process::exit(1);
+                }
+
+            }else {
+                println!("Expected register for to add.");
+                std::process::exit(1);
+
+            }
+        }else {
+            None
+        }
+    }
+
+
+    pub fn parse_subf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_sub_tok) = self.try_consume(TokenType::Subf) {
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}", self.peek_token());
+                }
+                if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                    return Some(NodeInstruction::NodeInstructionSubf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprFloat { value: f_lit },
+                    });
+                } else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                    return Some(NodeInstruction::NodeInstructionSubf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprRegister { value: register2_tok },
+                    });
+                } else {
+                    println!("Expected either float register or float literal to subtract from register.");
+                    std::process::exit(1);
+                }
+            } else {
+                println!("Expected float register to subtract from.");
+                std::process::exit(1);
+            }
+        } else {
+            None
+        }
+    }
+
+
+
+
+    pub fn parse_mulf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_mul_tok) = self.try_consume(TokenType::Mulf) {
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}", self.peek_token());
+                }
+                if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                    return Some(NodeInstruction::NodeInstructionMulf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprFloat { value: f_lit },
+                    });
+                } else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                    return Some(NodeInstruction::NodeInstructionMulf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprRegister { value: register2_tok },
+                    });
+                } else {
+                    println!("Expected either float register or float literal to multiply into register.");
+                    std::process::exit(1);
+                }
+            } else {
+                println!("Expected float register for multiplication.");
+                std::process::exit(1);
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_divf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_div_tok) = self.try_consume(TokenType::Divf) {
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}", self.peek_token());
+                }
+                if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                    return Some(NodeInstruction::NodeInstructionDivf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprFloat { value: f_lit },
+                    });
+                } else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                    return Some(NodeInstruction::NodeInstructionDivf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprRegister { value: register2_tok },
+                    });
+                } else {
+                    println!("Expected either float register or float literal to divide into register.");
+                    std::process::exit(1);
+                }
+            } else {
+                println!("Expected float register for division.");
+                std::process::exit(1);
+            }
+        } else {
+            None
+        }
+    }
+
+
+    pub fn parse_modf(&mut self) -> Option<NodeInstruction> {
+        if let Some(_mod_tok) = self.try_consume(TokenType::Modf) {
+            if let Some(register_tok) = self.try_consume(TokenType::FloatRegister) {
+                if self.try_consume(TokenType::Comma).is_none() {
+                    println!("Expected Comma, found:{:?}", self.peek_token());
+                }
+                if let Some(f_lit) = self.try_consume(TokenType::Float) {
+                    return Some(NodeInstruction::NodeInstructionModf {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprFloat { value: f_lit },
+                    });
+                } else if let Some(register2_tok) = self.try_consume(TokenType::FloatRegister) {
+                    return Some(NodeInstruction::NodeInstructionMod {
+                        lhs: NodeExpr::NodeExprRegister { value: register_tok },
+                        rhs: NodeExpr::NodeExprRegister { value: register2_tok },
+                    });
+                } else {
+                    println!("Expected either float register or float literal to perform modulus operation.");
+                    std::process::exit(1);
+                }
+            } else {
+                println!("Expected float register for modulus operation.");
+                std::process::exit(1);
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
         while let Some(_cur_token) = self.peek_token() {
+
             if let Some(inst_halt) = self.parse_halt() {
                 return Some(inst_halt);
             }
@@ -821,6 +1163,11 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
             if let Some(inst_add) = self.parse_add() {
                 return Some(inst_add);
             }
+
+            if let Some(inst_sub) = self.parse_sub() {
+                return Some(inst_sub);
+            } 
+
             if let Some(mul) = self.parse_mul() {
                 return Some(mul)
             }
@@ -830,16 +1177,40 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
             if let Some(inst_mod) = self.parse_mod() {
                 return Some(inst_mod)
             }
+
+            if let Some(inst_mov) = self.parse_movf() {
+                return Some(inst_mov);
+            }
+            if let Some(inst_add) = self.parse_addf() {
+                return Some(inst_add);
+            }
+
+            if let Some(inst_sub) = self.parse_subf() {
+                return Some(inst_sub);
+            } 
+
+            if let Some(mul) = self.parse_mulf() {
+                return Some(mul)
+            }
+            if let Some(div) = self.parse_divf() {
+                return Some(div)
+            }
+            if let Some(inst_mod) = self.parse_modf() {
+                return Some(inst_mod)
+            }
+
             if let Some(logial) = self.parse_logical() {
                 return Some(logial)
             }
-
-            if let Some(inst_sub) = self.parse_sub() {
-                return Some(inst_sub);
-            } 
             if let Some(inst_display) = self.parse_display() {
                 return Some(inst_display);
             } 
+            if let Some(inst_displayf) = self.parse_displayf() {
+                return Some(inst_displayf);
+            } 
+            if let Some(inst_displayc) = self.parse_displayc() {
+                return Some(inst_displayc);
+            }
             if let Some(push) = self.parse_push() {
                 return Some(push)
             }
@@ -874,9 +1245,12 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
             if let Some(gfs) = self.parse_getstack() {
                 return Some(gfs)
             }
-            
+
             if let Some(gfsp) = self.parse_getfromsp() {
                 return Some(gfsp)
+            }
+            if let Some(sfsp) = self.parse_setfromsp() {
+                return Some(sfsp)
             }
             if let Some(trunstack) = self.parse_truncate_stack() {
                 return Some(trunstack)
@@ -891,7 +1265,11 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
             if let Some(sm) = self.parse_setmem() {
                 return Some(sm);
             }
-           
+            if let Some(ret) = self.parse_ret() {
+                return Some(ret);
+            } 
+
+
             else {
                 break;
             }
@@ -899,16 +1277,58 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
         None
     } 
 
-    pub fn parse(&mut self) -> Option<HashMap<String,NodeLabel>> {
+  pub fn parse_builtin(&mut self) -> Option<NodeBuiltin> {
+        if let Some(_builtin_tok) = self.try_consume(TokenType::BuiltinStart) {
+            if let Some(builtin_ident) = self.try_consume(TokenType::Ident) {
+                let builtin_ident = builtin_ident.value.unwrap();
+                match builtin_ident.as_str() {
+                    "import" => {
+                        if self.try_consume(TokenType::LParen).is_none() {
+                            println!("Expected ( after @Import, found {:?}",self.peek_token());
+                            std::process::exit(1);
+                        }
+                        if let Some(string) = self.try_consume(TokenType::StringLit) {
+                            if self.try_consume(TokenType::RParen).is_none() {
+                                println!("Expected ( to close @Import function, found {:?}",self.peek_token());
+                                std::process::exit(1);   
+                            }  
+                            return Some(NodeBuiltin::NodeBuiltinImport {
+                                value: NodeExpr::NodeExprStringLit{value:string},
+                            })
+
+                        }else {
+                            println!("Expected string in @Import, found {:?}",self.peek_token());
+                            std::process::exit(1);
+                        }
+
+                    }
+                    _ => {
+                        println!("Invalid builtin function {:?}.",builtin_ident);
+                        std::process::exit(1);
+
+                    }
+                }
+            }else {
+                println!("Expected a builtin function type, found token {:?}",self.peek_token());
+                std::process::exit(1);
+            }
+        }
+        None
+    }
+
+
+    pub fn parse(&mut self)  {
+      //-> Option<Vec<NodeBuiltin>,(HashMap<String,NodeLabel>)> 
         while self.peek_token().is_some() {
-            if let Some((name,label)) = self.parse_label() {
+            if let Some(builtin) = self.parse_builtin() {
+                self.builtins.push(builtin);        
+            }else  if let Some((name,label)) = self.parse_label() {
                 self.labels.insert(name,label);
             }else {
                 println!("Statement is out of a label. {:?}",self.peek_token());
                 std::process::exit(1);
             }
         } 
-        Some(self.labels.clone())
     }
 
     pub fn peek_token(&self) -> Option<Token> {
@@ -934,4 +1354,19 @@ pub fn parse_jump_less(&mut self) -> Option<NodeInstruction> {
         return None;
     }
 
+}
+
+pub fn get_register_from_number(num:i32) -> Option<InstructionParamType> {
+    if num < 0 {
+        println!("Expected register or register number, found negative integer.");
+        std::process::exit(1);
+    }
+    match num {
+        0 => Some(REGA),
+        1 => Some(REGB),
+        2 => Some(REGC),
+        3 => Some(REGD),
+        4 => Some(RESERVEREGISTER),
+        _ => None
+    }
 }

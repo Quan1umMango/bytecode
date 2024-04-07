@@ -1,162 +1,325 @@
- /// Instructions are absrtactions over commands. Instead of writing Mov(0b0001000) you can write
- /// Mov(0,1). Much easier!
- 
-use crate::{commands::*,constants_and_types::*};
-use crate::{to_binary_slice,binary_slice_to_number};
-use std::collections::HashMap;
+use crate::constants_and_types::*;
+use crate::{to_binary_slice,binary_slice_to_number,ones_complement,twos_complement,to_float_repr};
 
+#[derive(Debug,Clone,PartialEq)]
+pub enum StringNumberUnion {
+    String(String),
+    Num(u32),
+}
 
- #[derive(Debug)]
- pub enum Instruction {
-     Halt,
-     Mov(InstructionParamType,InstructionParamType),
-     Add(InstructionParamType,InstructionParamType),
-     Sub(InstructionParamType,InstructionParamType),
-   Mul(InstructionParamType,InstructionParamType),
+impl Default for StringNumberUnion {
+    fn default() -> Self { 
+        return Self::Num(0);
+    }
+}
+
+#[derive(Debug,Clone,PartialEq)]
+pub enum Instruction {
+    Halt,
+    Mov(InstructionParamType,iInstructionParamType),
+    Add(InstructionParamType,InstructionParamType),
+    Sub(InstructionParamType,InstructionParamType),
+    Mul(InstructionParamType,InstructionParamType),
     Div(InstructionParamType,InstructionParamType),
-     Mod(InstructionParamType,InstructionParamType),
-     Display(InstructionParamType),
-     Push(InstructionParamType),
-     PushRegister(InstructionParamType),
-     Pop(InstructionParamType),
-     
-     Jump(String),
-     JumpIfZero(String),
-     JumpIfNotZero(String),
-     JumpIfEqual(String),
-     JumpIfNotEqual(String),
-    JumpIfGreater(String),
-     JumpIfLess(String),
- 
-     Compare(InstructionParamType,InstructionParamType),
+    Mod(InstructionParamType,InstructionParamType),
+    Display(InstructionParamType),
+    Push(iInstructionParamType),
+    PushRegister(InstructionParamType),
+    Pop(InstructionParamType),
 
-     GetFromStack(InstructionParamType,InstructionParamType),
-     GetFromStackPointer(InstructionParamType,InstructionParamType),
+    Jump(StringNumberUnion),
+    JumpIfZero(StringNumberUnion),
+    JumpIfNotZero(StringNumberUnion),
+    JumpIfEqual(StringNumberUnion),
+    JumpIfNotEqual(StringNumberUnion),
+    JumpIfGreater(StringNumberUnion),
+    JumpIfLess(StringNumberUnion),
 
+    Compare(InstructionParamType,InstructionParamType),
+
+    GetFromStack(InstructionParamType,InstructionParamType),
+    GetFromStackPointer(InstructionParamType,InstructionParamType),
+
+    SetFromStackPointer(InstructionParamType,InstructionParamType),
     Malloc(InstructionParamType),
-     GetMemory(InstructionParamType,InstructionParamType),
-     SetMemory(InstructionParamType,InstructionParamType),
+    GetMemory(InstructionParamType,InstructionParamType),
+    SetMemory(InstructionParamType,InstructionParamType),
 
-    
+
     Or(InstructionParamType,InstructionParamType),
     And(InstructionParamType,InstructionParamType),
     Not(InstructionParamType),
     Xor(InstructionParamType,InstructionParamType),
     Nand(InstructionParamType,InstructionParamType),
-    
-     TruncateStack(InstructionParamType),
- }
 
- impl Instruction {
-     pub fn to_command(&self,labels:&HashMap<String,(usize,Option<usize>)>) -> Command {
-         use Instruction::*;
-         
-         match self {
-             Halt => Command::Halt,
-             Mov(a,v) =>Command::Mov(join_params_to_command_params(*a,*v)),
-             Add(a,v) => Command::Add(join_params_to_command_params(*a,*v)),
-             Sub(a,v) => Command::Sub(join_params_to_command_params(*a,*v)),
-             Mod(a,v) => Command::Mod(join_params_to_command_params(*a,*v)),
-             Display(a) => Command::Display(join_params_to_command_params(*a,0)),
-             Push(a) => Command::Push(*a),
-             PushRegister(a) => Command::PushRegister(join_params_to_command_params(*a,0)),
-             Pop(a) => Command::Pop(join_params_to_command_params(*a,0)),
-            Jump(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::Jump(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
-                 
-             }
-             JumpIfZero(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfZero(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
-                 
-             }
-             JumpIfNotZero(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfNotZero(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
-                 
-             }
-           JumpIfEqual(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfEqual(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
+    TruncateStack(InstructionParamType),
 
-             }
-             JumpIfNotEqual(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfNotEqual(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
 
-             }
-             JumpIfGreater(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfGreater(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
+    Movf(InstructionParamType,FloatInstructionParamType),
+    Addf(InstructionParamType, InstructionParamType),
+    Subf(InstructionParamType, InstructionParamType),
+    Displayf(InstructionParamType),
+    Mulf(InstructionParamType, InstructionParamType),
+    Divf(InstructionParamType, InstructionParamType),
+    Modf(InstructionParamType, InstructionParamType),
+    PushFloatRegister(InstructionParamType),
+    PopFloat(InstructionParamType),
+    Return,
 
-             }
-             JumpIfLess(a) => {
-                 if let Some((start,_end))=  labels.get(a) {
-                     Command::JumpIfLess(join_params_to_command_params((*start).try_into().unwrap(),0))
-                 }else {
-                     panic!("Cannot find label as it is not defined: {:?}",a);
-                 }
+    DisplayValue(InstructionParamType),
+    DisplayChar(InstructionParamType),
+}
 
-             }
+impl Instruction {
 
-             Compare(a,v) => Command::Compare(join_params_to_command_params(*a,*v)),
-            
-             GetFromStack(a,v) => Command::GetFromStack(join_params_to_command_params(*a,*v)),
-             GetFromStackPointer(a,v) => Command::GetFromStackPointer(join_params_to_command_params(*a,*v)),
+    pub fn to_binary(&self) -> Vec<u8> {
+        use Instruction::*;
+        match self {
+            Halt => { return to_binary_slice!(InstructionNameBinaryType,0).to_vec()},
+            Mov(a,b) => {
+                let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                let b = twos_complement!(InstructionParamType,*b);
+                let mut b_binary = to_binary_slice!(InstructionParamType,b).to_vec();
+                let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,1).to_vec();
 
-             Malloc(a) => Command::Malloc(*a),
-             GetMemory(a,v) => Command::GetMemory(join_params_to_command_params(*a,*v)),
-             SetMemory(a,v) =>Command::SetMemory(join_params_to_command_params(*a,*v)),
+                instr_binary.append(&mut a_binary);
+                instr_binary.append(&mut b_binary);
+                return instr_binary
+            }
+            Add(a,b) | Sub(a,b) | Div(a,b) | Mul(a,b) | Mod(a,b) |
+            Addf(a,b) | Subf(a,b) | Divf(a,b) | Mulf(a,b) | Modf(a,b) | 
+            Compare(a,b) |
+            GetFromStack(a,b) | GetFromStackPointer(a,b) | SetFromStackPointer(a,b) |
+            GetMemory(a,b) |
+            SetMemory(a,b) |
+            Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)
+                => {
+                
+                let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                let mut b_binary = to_binary_slice!(InstructionParamType,*b).to_vec();
 
-             Mul(a,v)=> Command::Mul(join_params_to_command_params(*a,*v)),
-             Div(a,v)=> Command::Div(join_params_to_command_params(*a,*v)),
+                let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
 
-             Or(a,v)=> Command::Or(join_params_to_command_params(*a,*v)),
-             And(a,v)=> Command::And(join_params_to_command_params(*a,*v)),
-             Not(a)=> Command::Not(join_params_to_command_params(*a,0)),
-             Xor(a,v)=> Command::Xor(join_params_to_command_params(*a,*v)),
-             Nand(a,v)=> Command::Nand(join_params_to_command_params(*a,*v)),
-            TruncateStack(a) => Command::TruncateStack(join_params_to_command_params(*a,0)),
-         }
-     }
- }
+                instr_binary.append(&mut a_binary);
+                instr_binary.append(&mut b_binary);
+                    return instr_binary
+                }
 
- fn join_params_to_command_params(a:InstructionParamType,v:InstructionParamType) -> DestinationType {
-        let len = to_binary_slice!(InstructionParamType,0).len(); 
-        let mut v = to_binary_slice!(InstructionParamType,v)[len-DESTINATION_SIZE..].to_vec();      
-        let mut a = to_binary_slice!(InstructionParamType,a)[len-DESTINATION_SIZE..].to_vec();
-     a.append(&mut v);
-        
-        binary_slice_to_number!(DestinationType,a)
-  
- }
+            Display(a) |
+                Displayf(a) | 
+                DisplayChar(a) |
+                PushRegister(a)|Pop(a)|
+                PushFloatRegister(a) |PopFloat(a)|
+                TruncateStack(a)|
+                Not(a) 
+                => {
+                    let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                    let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
+                    instr_binary.append(&mut a_binary);
+                    return instr_binary;
+                }
 
- fn slice_to_binary_u16(sl:&[u8]) -> u16 {
- let mut num: u32 = 0;
-    for i in 0..sl.len() {
-        if sl[i] == 0 {
-            continue;
+            Movf(a,b) => {
+                let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                let mut b_binary = to_binary_slice!(InstructionParamType,to_float_repr!(FloatInstructionParamType,InstructionParamType,*b)).to_vec();
+ 
+                let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
+
+                instr_binary.append(&mut a_binary);
+                instr_binary.append(&mut b_binary);
+                return instr_binary               
+            }
+
+            Return => return to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec(),
+            Jump(s) |  
+                JumpIfZero(s)|
+                JumpIfNotZero(s)|
+                JumpIfEqual(s)|
+                JumpIfNotEqual(s)|
+                JumpIfGreater(s)|
+                JumpIfLess(s)
+                => {
+                    use StringNumberUnion::*;
+                match s {
+                    Num(a) => {
+                        let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                         let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
+
+                instr_binary.append(&mut a_binary);
+                return instr_binary     
+                    }
+                    String(_) => todo!()
+                }
+            }
+
+            Push(a) => {
+                let a = twos_complement!(InstructionParamType,*a);
+                let mut a_binary = to_binary_slice!(InstructionParamType,a).to_vec();
+                let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
+
+                instr_binary.append(&mut a_binary);
+                return instr_binary
+            } 
+            _ => {
+                panic!("Unimplemented: {:?}",self);
+            }
         }
-        num += 1 << (sl.len() - 1 - i);
     }
-    num as u16
- }
+
+
+    pub fn get_instruction_number(&self) -> InstructionNameBinaryType {
+        use Instruction::*;
+        match self {
+            Halt => 0,
+            Mov(_, _) => 1,
+            Add(_, _) => 2,
+            Sub(_, _) => 3,
+            Mul(_, _) => 4,
+            Div(_, _) => 5,
+            Mod(_, _) => 6,
+            Display(_) => 7,
+            Push(_) => 8,
+            PushRegister(_) => 9,
+            Pop(_) => 10,
+            Jump(_) => 11,
+            JumpIfZero(_) => 12,
+            JumpIfNotZero(_) => 13,
+            JumpIfEqual(_) => 14,
+            JumpIfNotEqual(_) => 15,
+            JumpIfGreater(_) => 16,
+            JumpIfLess(_) => 17,
+            Compare(_, _) => 18,
+            GetFromStack(_, _) => 19,
+            GetFromStackPointer(_, _) => 20,
+            SetFromStackPointer(_, _) => 21,
+            Malloc(_) => 22,
+            GetMemory(_, _) => 23,
+            SetMemory(_, _) => 24,
+            Or(_, _) => 25,
+            And(_, _) => 26,
+            Not(_) => 27,
+            Xor(_, _) => 28,
+            Nand(_, _) => 29,
+            TruncateStack(_) => 30,
+            Movf(_, _) => 31,
+            Addf(_, _) => 32,
+            Subf(_, _) => 33,
+            Displayf(_) => 34,
+            Mulf(_, _) => 35,
+            Divf(_, _) => 36,
+            Modf(_, _) => 37,
+  Return => 38,
+            DisplayValue(_) => 39,
+ PushFloatRegister(_) => 40,
+            PopFloat(_) => 41,
+            DisplayChar(_) => 42,
+           
+        }
+    }
+
+
+    pub fn get_default_from_number(i: usize) -> Option<Instruction> {
+        use Instruction::*;
+
+        match i {
+            0 => Some(Halt),
+            1 => Some(Mov(InstructionParamType::default(), iInstructionParamType::default())),
+            2 => Some(Add(InstructionParamType::default(), InstructionParamType::default())),
+            3 => Some(Sub(InstructionParamType::default(), InstructionParamType::default())),
+            4 => Some(Mul(InstructionParamType::default(), InstructionParamType::default())),
+            5 => Some(Div(InstructionParamType::default(), InstructionParamType::default())),
+            6 => Some(Mod(InstructionParamType::default(), InstructionParamType::default())),
+            7 => Some(Display(InstructionParamType::default())),
+            8 => Some(Push(iInstructionParamType::default())),
+            9 => Some(PushRegister(InstructionParamType::default())),
+            10 => Some(Pop(InstructionParamType::default())),
+            11 => Some(Jump(StringNumberUnion::default())),
+            12 => Some(JumpIfZero(StringNumberUnion::default())),
+            13 => Some(JumpIfNotZero(StringNumberUnion::default())),
+            14 => Some(JumpIfEqual(StringNumberUnion::default())),
+            15 => Some(JumpIfNotEqual(StringNumberUnion::default())),
+            16 => Some(JumpIfGreater(StringNumberUnion::default())),
+            17 => Some(JumpIfLess(StringNumberUnion::default())),
+            18 => Some(Compare(InstructionParamType::default(), InstructionParamType::default())),
+            19 => Some(GetFromStack(InstructionParamType::default(), InstructionParamType::default())),
+            20 => Some(GetFromStackPointer(InstructionParamType::default(), InstructionParamType::default())),
+            21 => Some(SetFromStackPointer(InstructionParamType::default(), InstructionParamType::default())),
+            22 => Some(Malloc(InstructionParamType::default())),
+            23 => Some(GetMemory(InstructionParamType::default(), InstructionParamType::default())),
+            24 => Some(SetMemory(InstructionParamType::default(), InstructionParamType::default())),
+            25 => Some(Or(InstructionParamType::default(), InstructionParamType::default())),
+            26 => Some(And(InstructionParamType::default(), InstructionParamType::default())),
+            27 => Some(Not(InstructionParamType::default())),
+            28 => Some(Xor(InstructionParamType::default(), InstructionParamType::default())),
+            29 => Some(Nand(InstructionParamType::default(), InstructionParamType::default())),
+            30 => Some(TruncateStack(InstructionParamType::default())),
+            31 => Some(Movf(InstructionParamType::default(), FloatInstructionParamType::default())),
+            32 => Some(Addf(InstructionParamType::default(), InstructionParamType::default())),
+            33 => Some(Subf(InstructionParamType::default(), InstructionParamType::default())),
+            34 => Some(Displayf(InstructionParamType::default())),
+            35 => Some(Mulf(InstructionParamType::default(), InstructionParamType::default())),
+            36 => Some(Divf(InstructionParamType::default(), InstructionParamType::default())),
+            37 => Some(Modf(InstructionParamType::default(), InstructionParamType::default())),
+            38 => Some(Return),
+            39 => Some(DisplayValue(InstructionParamType::default())),
+            40 => Some(PushFloatRegister(InstructionParamType::default())),
+            41 => Some(PopFloat(InstructionParamType::default())),
+            42 => Some(DisplayChar(InstructionParamType::default())),
+            _ => None,
+        }
+    }
+
+    pub fn get_param_binary_size(&self) -> (Option<usize>,Option<usize>) {
+        use Instruction::*;
+        match self {
+            Halt => { (None,None) },
+            Mov(_,_) => { (Some(REGISTER_PARAM_SIZE),Some(INT_PARAM_SIZE))  }
+            Add(_,_) | Sub(_,_) | Div(_,_) | Mul(_,_) | Mod(_,_) |
+                Addf(_,_) | Subf(_,_) | Divf(_,_) | Mulf(_,_) | Modf(_,_) | 
+                Compare(_,_) |
+                GetFromStack(_,_) | GetFromStackPointer(_,_) | SetFromStackPointer(_,_) |
+                GetMemory(_,_) |
+                SetMemory(_,_) |
+                Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_)
+                => {
+                    (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
+                }
+
+            Display(_) |
+                Displayf(_) |
+                DisplayChar(_) | 
+                PushRegister(_)| Pop(_) |
+                Push(_) | 
+                PushFloatRegister(_)| PopFloat(_) |
+                TruncateStack(_)|
+                Not(_) 
+                => {
+                    (Some(REGISTER_PARAM_SIZE),None)
+                }
+
+            Movf(_,_) => {
+                (Some(REGISTER_PARAM_SIZE),Some(FLOAT_PARAM_SIZE))
+            }
+
+            Return => { (None,None) } 
+
+
+            Jump(_) |
+                JumpIfZero(_) |
+                JumpIfNotZero(_) |
+                JumpIfEqual(_) |
+                JumpIfNotEqual(_) |
+                JumpIfGreater(_) |
+                JumpIfLess(_) => {
+                    (Some(JUMP_DESTINATION_PARAM_SIZE),None)
+                }
+
+                
+            _ => {
+                (None,None)
+            }
+        }
+    }
+
+}
+
