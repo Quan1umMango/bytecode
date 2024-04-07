@@ -1,0 +1,39 @@
+
+label __print:
+  pop rax 
+  cmp rax, 0
+  jne __print_main
+  ret
+  label __print_main:
+    displayc rax
+    sub rcx, 1
+    cmp rcx, 0
+    jne __print
+    endlabel
+endlabel
+
+label print:
+  pop rcx ; Count
+  jmp __print
+  ret
+endlabel
+
+label example:
+  push 33
+  push 100 
+  push 108 
+  push 114 
+  push 111 
+  push 87
+  push 0  ; Null character. Original character: 32
+  push 111 
+  push 108 
+  push 108 
+  push 101 
+  push 72
+  push  13
+  jmp print
+  ret
+endlabel
+
+label main: endlabel ; For Compiler
