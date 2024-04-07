@@ -45,7 +45,7 @@ label loop:
     cmp rax rbx
     add rax, 1 
     jne loop
-    jl loop     ; Jump is less 
+    jl loop     ; Jump if less 
     ret
 endlabel
 
