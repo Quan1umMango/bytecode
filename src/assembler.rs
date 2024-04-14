@@ -7,9 +7,9 @@ impl Basm {
         let tokens = Tokenizer::new(input).tokenize();
         let mut parsed = Parser::new(tokens);
         parsed.parse();
-        let mut generator = Generator::new(parsed.builtins,parsed.labels);
-        generator.generate();
-        generator.vm.register_start();
+        let mut generator = Generator::new(parsed.builtins,parsed.labels,parsed.instructions);
+        generator.generate(false);
+        //generator.vm.register_start();
         let bc = generator.vm.get_raw_byte_code();
         Basm::run_raw_string(bc); 
     }

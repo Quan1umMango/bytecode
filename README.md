@@ -18,14 +18,14 @@ label main: ; Heart of our program. This where code execution begins.
     cmp rcx rax  ; Compare. This sets flags based on the result
     je Equal     ; Jump if equal to label Equal
     
-    halt         ; Halts the program (optional)
-endlabel
+    halt         ; Halts the program (optional). If this is missing then the program 
+                 ; executes the next label
 
 label Equal:
     display rcx  ; Display the numeric value of rcx
     ret          ; Return to the called label (in this case main). Code execution happens normally after the jne
-                 ; If not return instruction exists then the program execution after the endlabel of this label.
-endlabel
+                 ; If not return instruction exists then the program executes the instructions 
+                 ; below this label if any otherwise halts.
 ```
 
 Count to 10:
@@ -38,7 +38,6 @@ label main:
 
     jmp loop
     
-endlabel
 
 label loop:
     display rax
@@ -47,7 +46,6 @@ label loop:
     jne loop
     jl loop     ; Jump if less 
     ret
-endlabel
 
 ```
 Look into ``examples`` for more examples.

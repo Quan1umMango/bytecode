@@ -7,8 +7,10 @@ use std::collections::HashMap;
 pub struct Parser {
     tokens:Vec<Token>,
     index: usize,
-    pub  labels: HashMap<String,NodeLabel>,
+    instruction_counter:usize,
+    pub  labels: HashMap<String,usize>,
     pub builtins: Vec<NodeBuiltin>,
+    pub instructions: Vec<NodeInstruction>,
 }
 
 
@@ -19,6 +21,7 @@ pub enum NodeExpr {
     NodeExprFloat    {value: Token},
     NodeExprLabelName {value: Token},
     NodeExprStringLit {value:Token},
+    NodeExprFlag     {value:Token},
 }
 
 #[derive(Debug,Clone)]
@@ -76,6 +79,7 @@ pub enum NodeInstruction  {
     NodeInstructionModf {lhs:NodeExpr, rhs:NodeExpr},
     NodeInstructionDisplayf {value:NodeExpr},
     NodeInstructionDisplayChar {value: NodeExpr},
+    NodeInstructionGetFlag { lhs: NodeExpr, rhs:NodeExpr},
 }
 
 
@@ -92,6 +96,8 @@ impl  Parser {
             index:0,
             labels:HashMap::new(),
             builtins:Vec::new(),
+            instructions:Vec::new(),
+            instruction_counter:1,
         }
     }
 
@@ -145,8 +151,6 @@ impl  Parser {
         }
         None 
     }
-
-
 
 
     pub fn parse_add(&mut self) -> Option<NodeInstruction> {
@@ -730,13 +734,14 @@ impl  Parser {
             }
             if self.try_consume(TokenType::Comma).is_none() {
                 println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
             }
-
 
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
             }else if let Some(int) = self.try_consume(TokenType::IntLit) {
-                rhs =Some(NodeExpr::NodeExprRegister{value:int});
+                rhs =Some(NodeExpr::NodeExprIntLit{value:int});
+
 
             }else {
                 println!("Expected register to get from stack pointer. (2nd argument)");
@@ -879,65 +884,14 @@ impl  Parser {
         None
     }
 
-    pub fn parse_label(&mut self) -> Option<(String,NodeLabel)> {
+    pub fn parse_label(&mut self) -> Option<(String,usize)> {
         if let Some(_label_tok) = self.try_consume(TokenType::Label) {
             if let Some(label_name) = self.try_consume(TokenType::Ident) {
                 if let Some(_) = self.labels.get(&label_name.value.clone().unwrap()) {
                     println!("Cannot defined lable with name `{:?}` as it is already defined.",label_name.value.clone().unwrap())
                 }
                 if let Some(_colon) = self.try_consume(TokenType::Colon) {
-                    let mut label_inst:Vec<NodeInstruction> = Vec::new();
-                    while let Some(tok) = self.peek_token() {
-                        if tok.token_type == TokenType::Return {
-                            let inst = NodeInstruction::NodeInstructionReturn;
-                            label_inst.push(inst);
-                            self.consume_token();
-                            continue;
-                        }else  if tok.token_type == TokenType::EndLabel  {
-                            self.consume_token();                         
-                            return Some((label_name.value.unwrap(),NodeLabel {
-                                insts:label_inst
-                            }));
-                        }else if tok.token_type == TokenType::Label {
-                            if let Some((name,mut label)) = self.parse_label() {
-                                let jmp_inst = NodeInstruction::NodeInstructionJump {
-                                    value: NodeExpr::NodeExprLabelName {
-                                        value: Token {
-                                            token_type: TokenType::Ident,
-                                            value: Some(name.clone()),
-                                        }
-                                    }
-
-                                };
-                                label.insts.push(NodeInstruction::NodeInstructionReturn);
-                                label_inst.push(jmp_inst);
-                                self.labels.insert(name,label);
-                            }else {
-                                println!("Statement is out of a label. {:?}",self.peek_token());
-                                std::process::exit(1);
-                            }
-
-                        }else if let Some(inst) = self.parse_inst() {
-                            label_inst.push(inst);
-                        }
-                        else {
-                            println!("Undefined Instruction. {:?}",tok);
-                            std::process::exit(1);
-                        }
-
-                    }
-
-                    if let Some(tok) = self.peek_token_back(1) {
-                        if tok.token_type == TokenType::EndLabel {
-                            return Some((label_name.value.unwrap(),NodeLabel {
-                                insts:label_inst
-                            }));
-
-                        }
-                    } 
-
-                    println!("Cannot have empty or label with name end: `{:?}`",label_name.value.unwrap());
-                    std::process::exit(1);
+                    return  Some((label_name.value.clone().unwrap(),self.instruction_counter));                    
                 }else {
                     println!("Expected colon `:` after label name.");
                     std::process::exit(1);
@@ -1151,6 +1105,40 @@ impl  Parser {
         }
     }
 
+    pub fn parse_getflag(&mut self) -> Option<NodeInstruction> {
+        if let Some(_getflag_tok) = self.try_consume(TokenType::GetFlag) {
+            let lhs = {
+                if let Some(reg) = self.try_consume(TokenType::Register) {
+                    NodeExpr::NodeExprRegister{value:reg}
+                }else if let Some(rint) = self.try_consume(TokenType::IntLit) {
+                    NodeExpr::NodeExprIntLit{value:rint}
+                } else {
+                    println!("Expected register to get flag into, found {:?}",self.peek_token());
+                    std::process::exit(1);
+                }
+            };
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected `,`, found {:?}",self.peek_token());
+                std::process::exit(1);
+            }
+            let rhs = {
+                if let Some(reg) = self.try_consume(TokenType::Register) {
+                    NodeExpr::NodeExprRegister{value:reg}
+                }else if let Some(rint) = self.try_consume(TokenType::IntLit) {
+                    NodeExpr::NodeExprIntLit{value:rint}
+                }else if let Some(flag) = self.try_consume(TokenType::Flag) {
+                    NodeExpr::NodeExprFlag{value:flag}
+                }
+                else {
+                    println!("Expected flag to get, found {:?}",self.peek_token());
+                    std::process::exit(1);
+                }
+            };
+            return Some(NodeInstruction::NodeInstructionGetFlag{lhs,rhs});
+        } 
+        None
+    }
+
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
         while let Some(_cur_token) = self.peek_token() {
 
@@ -1268,6 +1256,9 @@ impl  Parser {
             if let Some(ret) = self.parse_ret() {
                 return Some(ret);
             } 
+            if let Some(getflag) = self.parse_getflag() {
+                return Some(getflag);
+            }
 
 
             else {
@@ -1289,7 +1280,7 @@ impl  Parser {
                         }
                         if let Some(string) = self.try_consume(TokenType::StringLit) {
                             if self.try_consume(TokenType::RParen).is_none() {
-                                println!("Expected ( to close @Import function, found {:?}",self.peek_token());
+                                println!("Expected ( to close @import function, found {:?}",self.peek_token());
                                 std::process::exit(1);   
                             }  
                             return Some(NodeBuiltin::NodeBuiltinImport {
@@ -1300,13 +1291,9 @@ impl  Parser {
                             println!("Expected string in @Import, found {:?}",self.peek_token());
                             std::process::exit(1);
                         }
-
                     }
-                    _ => {
-                        println!("Invalid builtin function {:?}.",builtin_ident);
-                        std::process::exit(1);
-
-                    }
+                    _ => unreachable!()
+                  
                 }
             }else {
                 println!("Expected a builtin function type, found token {:?}",self.peek_token());
@@ -1322,10 +1309,14 @@ impl  Parser {
         while self.peek_token().is_some() {
             if let Some(builtin) = self.parse_builtin() {
                 self.builtins.push(builtin);        
-            }else  if let Some((name,label)) = self.parse_label() {
-                self.labels.insert(name,label);
-            }else {
-                println!("Statement is out of a label. {:?}",self.peek_token());
+            }else  if let Some((name,labelindex)) = self.parse_label() {
+                self.labels.insert(name,labelindex);
+            }else if let Some(inst) = self.parse_inst() {
+                self.instructions.push(inst);
+                self.instruction_counter += 1;
+            }
+            else {
+                println!("Undefined instruction: {:?}",self.peek_token());
                 std::process::exit(1);
             }
         } 

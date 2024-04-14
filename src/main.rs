@@ -1,4 +1,3 @@
-
 #![recursion_limit = "10000"]
 mod instruction;
 mod conversions;
@@ -25,6 +24,5 @@ fn main() {
     
     let filename = &args[1];
    Basm::run_file(filename.clone()); 
-
 }
 

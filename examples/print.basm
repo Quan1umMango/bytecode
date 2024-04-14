@@ -9,31 +9,27 @@ label __print:
     sub rcx, 1
     cmp rcx, 0
     jne __print
-    endlabel
-endlabel
+    ret
 
 label print:
   pop rcx ; Count
   jmp __print
   ret
-endlabel
 
 label example:
-  push 33
-  push 100 
-  push 108 
-  push 114 
-  push 111 
-  push 87
-  push 0  ; Null character. Original character: 32
-  push 111 
-  push 108 
-  push 108 
-  push 101 
-  push 72
-  push  13
+  push 33  ; !
+  push 100 ; d 
+  push 108 ; l
+  push 114 ; r 
+  push 111 ; o 
+  push 87 ;  W 
+  push 0  ; Null character. Original character: 32 (space) 
+  push 111 ; o 
+  push 108 ; l 
+  push 108 ; l 
+  push 101 ; e 
+  push 72 ; H 
+  push 12 ; Lenght of string (Will cause error if lenght is more than the stack size)
   jmp print
   ret
-endlabel
 
-label main: endlabel ; For Compiler

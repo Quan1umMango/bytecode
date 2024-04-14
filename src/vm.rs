@@ -94,7 +94,8 @@ impl VM {
                         GetFromStack(ref mut a, ref mut b) | GetFromStackPointer(ref mut a, ref mut b) | SetFromStackPointer(ref mut a, ref mut b) |
                         GetMemory(ref mut a, ref mut b) |
                         SetMemory(ref mut a, ref mut b) |
-                        Or(ref mut a, ref mut b) | And(ref mut a, ref mut b) | Xor(ref mut a, ref mut b) | Nand(ref mut a, ref mut b) => {
+                        Or(ref mut a, ref mut b) | And(ref mut a, ref mut b) | Xor(ref mut a, ref mut b) | Nand(ref mut a, ref mut b) |
+                        GetFlag(ref mut a, ref mut b)=> {
 
                             let (size_a,size_b) = (param_size.0.unwrap(),param_size.1.unwrap());
                             let param_a = binary_slice_to_number!(InstructionParamType,s[i..i+size_a]
@@ -374,25 +375,28 @@ impl VM {
                 let (a,b) = (*a,*b);
                 let reg_a = self.registers[a as usize];
                 let reg_b = self.registers[b as usize];
+                let _ = self.set_flag(ZERO_FLAG, (reg_a==0 && reg_b == 0) as u8);
                 let _ = self.set_flag(EQUAL_FLAG,(reg_a==reg_b) as u8);
                 let _ =self.set_flag(GREATER_THAN_FLAG,(reg_a>reg_b) as u8);
                 let _ =self.set_flag(LESS_THAN_FLAG,(reg_a<reg_b) as u8);
             }
 
-            GetFromStack(reg,sp) => {
+            GetFromStack(sp,reg) => {
                 
                 let (reg,sp) = (*reg,*sp);
-                let regsp = self.registers[sp as usize];
+                let regsp = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[sp as usize]) as RegisterDataType;
+
                 if let Some(content) = self.stack.get(regsp as usize) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
                 }else {
-                    panic!("Cannot get element number: {:?} from stack with total items: {:?}",sp,self.stack.len());
+                    panic!("Cannot get element number: {:?} from stack with total items: {:?}",regsp,self.stack.len());
                 }
             }
             GetFromStackPointer(offset,reg) => {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
-                let regoffset = self.registers[offset as usize];
+                let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
+         
                 let index = sp -1- regoffset as usize;
                 if let Some(content) = self.stack.get(index) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
@@ -570,6 +574,16 @@ impl VM {
                 }
                 print!("{}",ch.unwrap());
             }
+            GetFlag(dest,flagregno) => {
+                let (dest,flagregno) = (*dest,*flagregno);
+                let flag = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[flagregno as usize]);
+                if let Some(f) = self.flags.get(flag as usize) {
+                    self.registers[dest as usize] = *f as RegisterDataType; 
+                }else {
+                    println!("Runtime Error: Could not get flag number {:?} as it does not exist.",flag);
+                    std::process::exit(1);
+                }
+            }
             _ => unimplemented!()
 
         }
@@ -742,6 +756,51 @@ impl VM {
                     }
                 }
 
+                JumpIfZero(s) => {
+                    use crate::instruction::StringNumberUnion::*;
+                    match s {
+                        String(s) => {
+                            if let Some(v) = self.labels.get(s) {
+                                let loc = v.0;
+                                JumpIfZero(Num(loc as u32))
+                            }else {
+                                unreachable!()
+                            }
+                        }
+                        Num(n) => JumpIfZero(Num(*n)),
+                    }
+                }
+                JumpIfNotZero(s) => {
+                    use crate::instruction::StringNumberUnion::*;
+                    match s {
+                        String(s) => {
+                            if let Some(v) = self.labels.get(s) {
+                                let loc = v.0;
+                                JumpIfNotZero(Num(loc as u32))
+                            }else {
+                                unreachable!()
+                            }
+                        }
+                        Num(n) => JumpIfNotZero(Num(*n)),
+                    }
+                }
+                JumpIfEqual(s) => {
+
+                    use crate::instruction::StringNumberUnion::*;
+                    match s {
+                        String(s) => {
+                            if let Some(v) = self.labels.get(s) {
+                                let loc = v.0;
+                                JumpIfEqual(Num(loc as u32))
+                            }else {
+                                unreachable!()
+                            }
+                        }
+                        Num(n) => JumpIfEqual(Num(*n)),
+                    }
+
+                }
+
                 _ => self.instructions[i].clone()
             };
 
@@ -773,6 +832,7 @@ impl VM {
     }
 
     pub fn end_label(&mut self, flag_name:&str) {
+        todo!();
         if let Some((_start,end)) = self.labels.get_mut(&flag_name.to_string()) {
                 if end.is_some() {
                     panic!("Unable to end label {:?} as it is already ended",flag_name);
@@ -801,5 +861,21 @@ impl VM {
     
     pub fn last_command(&self) -> usize {
         return self.last_command;
+    }
+
+    pub fn create_label(&mut self, label_index:usize, label_name:&String) {
+        if self.labels.get(label_name).is_some() {
+            println!("Cannot create label with name `{:?}` as it already exists.",label_name);
+            std::process::exit(1);
+        }
+        self.labels.insert(label_name.clone(),(label_index,None));
+    }
+
+    pub fn labels(&self) -> &HashMap<String,(usize,Option<usize>)> {
+        &self.labels
+    }
+
+    pub fn labels_mut(&mut self) -> &mut HashMap<String,(usize,Option<usize>)> {
+        &mut self.labels
     }
 }

@@ -68,6 +68,8 @@ pub enum Instruction {
 
     DisplayValue(InstructionParamType),
     DisplayChar(InstructionParamType),
+    
+    GetFlag(InstructionParamType,InstructionParamType),
 }
 
 impl Instruction {
@@ -92,7 +94,8 @@ impl Instruction {
             GetFromStack(a,b) | GetFromStackPointer(a,b) | SetFromStackPointer(a,b) |
             GetMemory(a,b) |
             SetMemory(a,b) |
-            Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)
+            Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)|
+            GetFlag(a,b)
                 => {
                 
                 let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
@@ -213,7 +216,7 @@ impl Instruction {
  PushFloatRegister(_) => 40,
             PopFloat(_) => 41,
             DisplayChar(_) => 42,
-           
+           GetFlag(_,_) => 43
         }
     }
 
@@ -265,6 +268,7 @@ impl Instruction {
             40 => Some(PushFloatRegister(InstructionParamType::default())),
             41 => Some(PopFloat(InstructionParamType::default())),
             42 => Some(DisplayChar(InstructionParamType::default())),
+            43 => Some(GetFlag(InstructionParamType::default(),InstructionParamType::default())),
             _ => None,
         }
     }
@@ -280,7 +284,8 @@ impl Instruction {
                 GetFromStack(_,_) | GetFromStackPointer(_,_) | SetFromStackPointer(_,_) |
                 GetMemory(_,_) |
                 SetMemory(_,_) |
-                Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_)
+                Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_) |
+                GetFlag(_,_)
                 => {
                     (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
                 }

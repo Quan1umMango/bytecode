@@ -4,13 +4,10 @@ label __factorial:
   cmp rax, 1
   jne __factorial 
   ret
-endlabel
 
 label factorial:
   pop rax
   mov rcx,1 
   jmp __factorial
   ret
-endlabel
 
-label main: endlabel
