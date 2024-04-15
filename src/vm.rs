@@ -664,6 +664,7 @@ impl VM {
     }
 
     pub fn run_current_inst(&mut self) {
+        
         let cur_inst = self.instructions[self.command_pointer].clone();
         self.run_instruction(&cur_inst);
      }

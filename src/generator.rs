@@ -599,7 +599,7 @@ NodeInstructionDisplayChar { value } => {
                             let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();                  
                             self.vm.add_instruction(Instruction::PushRegister(dest+1));
                             self.vm.add_instruction(Instruction::Mov(dest+1,int));
-                            self.vm.add_instruction(Instruction::GetFromStackPointer(dest+1,dest));
+                            self.vm.add_instruction(Instruction::SetFromStackPointer(dest+1,dest));
                             self.vm.add_instruction(Instruction::Pop(dest+1));
                         }
                         _ => unreachable!()
