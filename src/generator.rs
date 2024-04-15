@@ -387,7 +387,7 @@ NodeInstructionDisplayChar { value } => {
                         NodeExpr::NodeExprIntLit { value } => {
                             let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
                             self.vm.add_instruction(Instruction::PushRegister(dest+1));
-                            self.vm.add_instruction(Instruction::Mov(dest+1,val));
+                            self.vm.add_instruction(Instruction::Mov(dest+1,val+1));
                             self.vm.add_instruction(Instruction::GetFromStack(dest+1,dest));
                             self.vm.add_instruction(Instruction::Pop(dest+1));
                         }
@@ -596,9 +596,9 @@ NodeInstructionDisplayChar { value } => {
                             self.vm.add_instruction(Instruction::SetFromStackPointer(get_register(&lhs),dest));
                         }
                         NodeExpr::NodeExprIntLit { value } => {
-                            let int = value.value.clone().unwrap().parse::<FloatInstructionParamType>().unwrap();                  
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();                  
                             self.vm.add_instruction(Instruction::PushRegister(dest+1));
-                            self.vm.add_instruction(Instruction::Movf(dest+1,int));
+                            self.vm.add_instruction(Instruction::Mov(dest+1,int));
                             self.vm.add_instruction(Instruction::GetFromStackPointer(dest+1,dest));
                             self.vm.add_instruction(Instruction::Pop(dest+1));
                         }

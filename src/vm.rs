@@ -396,7 +396,7 @@ impl VM {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
-         
+              
                 let index = sp -1- regoffset as usize;
                 if let Some(content) = self.stack.get(index) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
@@ -408,8 +408,8 @@ impl VM {
             SetFromStackPointer(offset,reg) => {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
-                let regoffset = self.registers[offset as usize];
-                let index = sp -1- regoffset as usize;
+                let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
+                let index = sp - regoffset as usize;
                
                 if let Some(content) = self.stack.get_mut(index) {
                    *content =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
