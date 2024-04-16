@@ -336,7 +336,7 @@ impl VM {
 
                   let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad) };
+                let mut s = |ad| { self.run_label_raw_inst(ad);};
                 jump!(a,labels,insts,s);            
             }
             JumpIfEqual(a) => {
@@ -350,9 +350,9 @@ impl VM {
                 if *self.get_flag(EQUAL_FLAG).unwrap() == 1 { return; }
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.return_addresses.push(self.command_pointer); self.set_command_pointer(ad-1)  };
-
-                jump!(a,labels,insts,s);           
+                let mut s = |ad| {self.set_command_pointer(ad-1); };
+                jump!(a,labels,insts,s);     
+               
             }
 
             JumpIfGreater(a) => {
@@ -382,7 +382,6 @@ impl VM {
             }
 
             GetFromStack(sp,reg) => {
-                
                 let (reg,sp) = (*reg,*sp);
                 let regsp = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[sp as usize]) as RegisterDataType;
 
@@ -409,13 +408,12 @@ impl VM {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
-                let index = sp - regoffset as usize;
-               
-                if let Some(content) = self.stack.get_mut(index) {
-                   *content =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
-                }else {
+                let index = sp  -1- regoffset as usize;
+                if index >= self.stack.len() {
                     panic!("Cannot set element number: {:?} from stack with total items: {:?}",sp,self.stack.len());
                 }
+                self.stack[index] =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
+                
 
             }
 
@@ -567,6 +565,7 @@ impl VM {
             DisplayChar(a) => {
                 let a = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[*a as usize]);
                 
+
                 let ch = char::from_u32(a.try_into().unwrap());
                 if ch.is_none() {
                     println!("Run Time Error: Cannot get character from number {:?}",a);
@@ -578,7 +577,7 @@ impl VM {
                 let (dest,flagregno) = (*dest,*flagregno);
                 let flag = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[flagregno as usize]);
                 if let Some(f) = self.flags.get(flag as usize) {
-                    self.registers[dest as usize] = *f as RegisterDataType; 
+                    self.registers[dest as usize] = twos_complement!(RegisterDataType,*f as iRegisterDataType); 
                 }else {
                     println!("Runtime Error: Could not get flag number {:?} as it does not exist.",flag);
                     std::process::exit(1);

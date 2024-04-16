@@ -387,7 +387,7 @@ NodeInstructionDisplayChar { value } => {
                         NodeExpr::NodeExprIntLit { value } => {
                             let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
                             self.vm.add_instruction(Instruction::PushRegister(dest+1));
-                            self.vm.add_instruction(Instruction::Mov(dest+1,val+1));
+                            self.vm.add_instruction(Instruction::Mov(dest+1,val));
                             self.vm.add_instruction(Instruction::GetFromStack(dest+1,dest));
                             self.vm.add_instruction(Instruction::Pop(dest+1));
                         }
@@ -410,6 +410,24 @@ NodeInstructionDisplayChar { value } => {
                         _ => unreachable!()
                     };
                 },
+
+                NodeInstructionSetFromStackPointer { lhs, rhs } => {
+                    let dest = get_register(&rhs);
+                    match lhs {
+                        NodeExpr::NodeExprRegister { value: _} => {
+                            self.vm.add_instruction(Instruction::SetFromStackPointer(get_register(&lhs),dest));
+                        }
+                        NodeExpr::NodeExprIntLit { value } => {
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();                  
+                            self.vm.add_instruction(Instruction::PushRegister(dest+1));
+                            self.vm.add_instruction(Instruction::Mov(dest+1,int+1));
+                            self.vm.add_instruction(Instruction::SetFromStackPointer(dest+1,dest));
+                            self.vm.add_instruction(Instruction::Pop(dest+1));
+                        }
+                        _ => unreachable!()
+                    };
+
+                }
 
                 NodeInstructionTruncateStack { value } => {
                     match value {
@@ -589,23 +607,7 @@ NodeInstructionDisplayChar { value } => {
                     }
                 }
 
-                NodeInstructionSetFromStackPointer { lhs, rhs } => {
-                    let dest = get_register(&rhs);
-                    match lhs {
-                        NodeExpr::NodeExprRegister { value: _} => {
-                            self.vm.add_instruction(Instruction::SetFromStackPointer(get_register(&lhs),dest));
-                        }
-                        NodeExpr::NodeExprIntLit { value } => {
-                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();                  
-                            self.vm.add_instruction(Instruction::PushRegister(dest+1));
-                            self.vm.add_instruction(Instruction::Mov(dest+1,int));
-                            self.vm.add_instruction(Instruction::SetFromStackPointer(dest+1,dest));
-                            self.vm.add_instruction(Instruction::Pop(dest+1));
-                        }
-                        _ => unreachable!()
-                    };
-
-                }
+               
 
 
                 NodeInstructionMovf {lhs,rhs} => {
