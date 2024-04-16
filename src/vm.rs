@@ -327,7 +327,7 @@ impl VM {
 
                    let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad) };
+                let mut s = |ad| {self.run_label_raw_inst(ad);};
                 jump!(a,labels,insts,s); 
 
             }
@@ -336,14 +336,14 @@ impl VM {
 
                   let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad);};
+                let mut s = |ad| { self.run_label_raw_inst(ad)};
                 jump!(a,labels,insts,s);            
             }
             JumpIfEqual(a) => {
                 if *self.get_flag(EQUAL_FLAG).unwrap() == 0 { return; }
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad) };
+                let mut s = |ad| { self.set_command_pointer(ad-1); };
                 jump!(a,labels,insts,s);
             } 
             JumpIfNotEqual(a) => {
@@ -360,13 +360,14 @@ impl VM {
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
                 let mut s = |ad| { self.run_label_raw_inst(ad) };
+            
                 jump!(a,labels,insts,s);   
             }
             JumpIfLess(a) => {
                 if *self.get_flag(LESS_THAN_FLAG).unwrap() == 0 { return; }
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad) };
+                let mut s = |ad| {  self.run_label_raw_inst(ad)  };
                 jump!(a,labels,insts,s);    
             }
 
