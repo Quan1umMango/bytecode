@@ -27,28 +27,29 @@ impl Generator {
 
     // NOTE: Make this code better lol.
     pub fn generate(&mut self,no_main:bool) {
-        let external_labels: Vec<(Option<(String,usize)>,NodeInstruction)> = self.generate_builtin();
-        let mut new_instructions: Vec<(Option<String>,NodeInstruction)> = Vec::new();
+        let external_labels: Vec<(Vec<(String,usize)>,NodeInstruction)> = self.generate_builtin();
+        let mut new_instructions: Vec<(Vec<String>,NodeInstruction)> = Vec::new();
         // We first push the external instructions into new_instructions and attach any label
         // identifier they have.
         for i in 0..external_labels.len() {
             let cur = external_labels[i].clone();
-            if cur.0.is_some() {
-                new_instructions.push((Some(cur.0.unwrap().0),cur.1));
+            if cur.0.is_empty() {
+                new_instructions.push((Vec::new(),cur.1));
             }else {
-                new_instructions.push((None,cur.1));
+                let v = cur.0.iter().map(|(x,_)| x.as_str().to_string()).collect::<Vec<String>>(); 
+                new_instructions.push((v,cur.1));
             }
         }
 
         let l =new_instructions.len();
         
         for inst in self.node_instructions.iter() {
-            new_instructions.push((None,inst.clone()));
+            new_instructions.push((Vec::new(),inst.clone()));
         }
         // We search if there are any labels in our main file then attach them onto the
         // new_instructions 
         for (name,start) in self.labels.iter() {
-            new_instructions[*start+l-1].0 = Some(name.clone());
+            new_instructions[*start+l-1].0.push(name.clone());
         }
 
         self.generate_instructions(new_instructions);
@@ -59,7 +60,7 @@ impl Generator {
     }
 
 
-    pub fn generate_builtin(&mut self) -> Vec<(Option<(String,usize)>,NodeInstruction)> {
+    pub fn generate_builtin(&mut self) -> Vec<(Vec<(String,usize)>,NodeInstruction)> {
         let mut out = Vec::new();
         for builtin in self.builtins.iter() {
             match builtin {
@@ -81,16 +82,21 @@ impl Generator {
                     let mut parsed = Parser::new(tokens);
                     parsed.parse();
                     'outer: for i in 1..parsed.instructions.len()+1 {
+                        let mut cur_labels = Vec::new();
                         for (label_name,start) in parsed.labels.iter() {
                             if *start == i && *label_name !="main".to_string(){
-                               out.push((Some((label_name.clone(),*start)),parsed.instructions[i-1].clone()));
+                                cur_labels.push((label_name.clone(),*start));
+                              // out.push((Some((label_name.clone(),*start)),parsed.instructions[i-1].clone()));
                                
-                                continue 'outer;
                             }
+                            if cur_labels.len() != 0 {
+                                out.push((cur_labels,parsed.instructions[i-1].clone()));
+                                continue 'outer;
+                            } 
                         }
-                        out.push((None,parsed.instructions[i-1].clone()));
+                        out.push((Vec::new(),parsed.instructions[i-1].clone()));
                     }
-                    
+
                 }
 
                 _ => () 
@@ -100,12 +106,14 @@ impl Generator {
     }
 
 
-    pub fn generate_instructions(&mut self,insts:Vec<(Option<String>,NodeInstruction)>){
+    pub fn generate_instructions(&mut self,insts:Vec<(Vec<String>,NodeInstruction)>){
 
         use NodeInstruction::*;
-        for (label_option,node) in insts.iter() {
-            if label_option.is_some() {
-                self.vm.create_label(self.vm.last_command(),&label_option.clone().unwrap());
+        for (label_vec,node) in insts.iter() {
+            if !label_vec.is_empty() {
+                for label_name in label_vec.iter() {
+                    self.vm.create_label(self.vm.last_command(),&label_name.clone());
+                }
             }
             match node {
                 NodeInstructionHalt => self.vm.add_instruction(Instruction::Halt),
@@ -410,6 +418,24 @@ NodeInstructionDisplayChar { value } => {
                         _ => unreachable!()
                     };
                 },
+                
+                NodeInstructionSetStack { lhs, rhs } => {
+                    let dest = get_register(&rhs);
+                    match lhs {
+                        NodeExpr::NodeExprRegister { value: _} => {
+                            self.vm.add_instruction(Instruction::SetStack(get_register(&lhs),dest));
+                        }
+                        NodeExpr::NodeExprIntLit { value } => {
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();                  
+                            self.vm.add_instruction(Instruction::PushRegister(dest+1));
+                            self.vm.add_instruction(Instruction::Mov(dest+1,int));
+                            self.vm.add_instruction(Instruction::SetStack(dest+1,dest));
+                            self.vm.add_instruction(Instruction::Pop(dest+1));
+                        }
+                        _ => unreachable!()
+                    };
+
+                }
 
                 NodeInstructionSetFromStackPointer { lhs, rhs } => {
                     let dest = get_register(&rhs);
@@ -733,6 +759,44 @@ NodeInstructionDisplayChar { value } => {
                         _ => unreachable!()
                     }
                 }
+
+                NodeInstructionGetStackPointer { lhs } => {
+                    let reg = get_register(&lhs);
+                    self.vm.add_instruction(Instruction::GetStackPointer(reg)); 
+                }
+
+                NodeInstructionTruncateStackRange { lhs, rhs } => {
+                    let reg = get_register(&lhs);
+                    match rhs  {
+                        NodeExpr::NodeExprIntLit{value} => {
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                            self.vm.add_instruction(Instruction::PushRegister(reg+1));
+                            self.vm.add_instruction(Instruction::Mov(reg+1,int));
+                            self.vm.add_instruction(Instruction::TruncateStackRange(reg,reg+1));
+                            self.vm.add_instruction(Instruction::Pop(reg+1));
+                        }
+                        NodeExpr::NodeExprRegister{value:_} => {
+                            self.vm.add_instruction(Instruction::TruncateStackRange(reg,get_register(&rhs))); 
+                        }
+                        _ => unreachable!()
+                    }
+
+                }
+
+                NodeInstructionCall { value } => {
+                    match value {
+                        NodeExpr::NodeExprIntLit{value} => {
+                            let inst_address = value.value.as_ref().unwrap().parse::<u32>().unwrap();
+                            self.vm.add_instruction(Instruction::Call(crate::instruction::StringNumberUnion::Num(inst_address)));
+                        }
+                        NodeExpr::NodeExprLabelName{value:_v} => {
+                            let label_name=  get_jump_label(value.clone()).unwrap();
+                            self.vm.add_instruction(Instruction::Call(crate::instruction::StringNumberUnion::String(label_name)));
+                        }
+                        _ => unreachable!()
+                    }
+                }
+
             }
         }
     }

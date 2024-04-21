@@ -91,11 +91,14 @@ impl VM {
                     Add(ref mut a, ref mut b) | Sub(ref mut a, ref mut b) | Div(ref mut a, ref mut b) | Mul(ref mut a, ref mut b) | Mod(ref mut a, ref mut b) |
                         Addf(ref mut a, ref mut b) | Subf(ref mut a, ref mut b) | Divf(ref mut a, ref mut b) | Mulf(ref mut a, ref mut b) | Modf(ref mut a, ref mut b) | 
                         Compare(ref mut a, ref mut b) |
-                        GetFromStack(ref mut a, ref mut b) | GetFromStackPointer(ref mut a, ref mut b) | SetFromStackPointer(ref mut a, ref mut b) |
+                        GetFromStack(ref mut a, ref mut b) | GetFromStackPointer(ref mut a, ref mut b) | SetFromStackPointer(ref mut a, ref mut b) | SetStack(ref mut a, ref mut b) |
                         GetMemory(ref mut a, ref mut b) |
                         SetMemory(ref mut a, ref mut b) |
                         Or(ref mut a, ref mut b) | And(ref mut a, ref mut b) | Xor(ref mut a, ref mut b) | Nand(ref mut a, ref mut b) |
-                        GetFlag(ref mut a, ref mut b)=> {
+                        GetFlag(ref mut a, ref mut b) |
+                        TruncateStackRange(ref mut a, ref mut b)
+
+                        => {
 
                             let (size_a,size_b) = (param_size.0.unwrap(),param_size.1.unwrap());
                             let param_a = binary_slice_to_number!(InstructionParamType,s[i..i+size_a]
@@ -119,7 +122,8 @@ impl VM {
                         PushRegister(ref mut a)| Pop(ref mut a) | 
                         PushFloatRegister(ref mut a)| PopFloat(ref mut a) | 
                         TruncateStack(ref mut a)|
-                            Not(ref mut a) 
+                            Not(ref mut a) |
+                        GetStackPointer(ref mut a)
                             => {
                                 let size_reg = param_size.0.unwrap();
                             let param = s[i..i+size_reg]
@@ -195,7 +199,8 @@ impl VM {
                             JumpIfEqual(ref mut dest) |
                             JumpIfNotEqual(ref mut dest) |
                             JumpIfGreater(ref mut dest) |
-                            JumpIfLess(ref mut dest) => {
+                            JumpIfLess(ref mut dest)|
+                            Call(ref mut dest)=> {
                                 if param_size.0.is_none() {
                                     println!("Bytecode Error: Argument 0 not found for {:?}",instruction.clone());
                                     std::process::exit(1);
@@ -306,37 +311,43 @@ impl VM {
                 self.floating_point_registers[*a as usize] = binary_to_float!(FloatRegisterDataType,RegisterDataType,binary_slice_to_number!(RegisterDataType,&pop.unwrap()));
                 self.sp -= 1;
             }
+
+            Call(a) => {
+                let labels = self.labels.clone();
+                let insts = self.instructions.clone();
+                let mut s = |ad| { 
+                    self.return_addresses.push(self.command_pointer); 
+                    self.set_command_pointer(ad-1);
+                };
+
+                jump!(a,labels,insts,s);
+            }
+
             Jump(a) => {
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
                 let mut s = |ad| { 
-                    if self.command_pointer > 0 {
-
-                        self.return_addresses.push(self.command_pointer); 
-                    }
-
                     self.set_command_pointer(ad-1);
                 };
                 jump!(a,labels,insts,s);
                 //  jump_inst!(dest,labels,rn); 
             }
-            
-            JumpIfZero(a) => {
-            
-                if self.get_flag(ZERO_FLAG).is_some() && *self.get_flag(ZERO_FLAG).unwrap()  == 0{ return };
 
-                   let labels = self.labels.clone();
+            JumpIfZero(a) => {
+
+                if  *self.get_flag(ZERO_FLAG).unwrap() == 0{ return };
+                let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| {self.run_label_raw_inst(ad);};
+                let mut s = |ad| {self.set_command_pointer(ad-1);};
                 jump!(a,labels,insts,s); 
 
             }
             JumpIfNotZero(a) => {
-            if self.get_flag(ZERO_FLAG).is_some() && *self.get_flag(ZERO_FLAG).unwrap() !=0 { return };
+                if  *self.get_flag(ZERO_FLAG).unwrap() !=0 { return };
 
-                  let labels = self.labels.clone();
+                let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad)};
+                let mut s = |ad| { self.set_command_pointer(ad-1)};
                 jump!(a,labels,insts,s);            
             }
             JumpIfEqual(a) => {
@@ -359,7 +370,7 @@ impl VM {
                 if *self.get_flag(GREATER_THAN_FLAG).unwrap() == 0 { return; }
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| { self.run_label_raw_inst(ad) };
+                let mut s = |ad| { self.set_command_pointer(ad-1) };
             
                 jump!(a,labels,insts,s);   
             }
@@ -367,16 +378,16 @@ impl VM {
                 if *self.get_flag(LESS_THAN_FLAG).unwrap() == 0 { return; }
                 let labels = self.labels.clone();
                 let insts = self.instructions.clone();
-                let mut s = |ad| {  self.run_label_raw_inst(ad)  };
+                let mut s = |ad| {  self.set_command_pointer(ad-1)  };
                 jump!(a,labels,insts,s);    
             }
 
             Compare(a,b) => {
 
                 let (a,b) = (*a,*b);
-                let reg_a = self.registers[a as usize];
-                let reg_b = self.registers[b as usize];
-                let _ = self.set_flag(ZERO_FLAG, (reg_a==0 && reg_b == 0) as u8);
+                let reg_a = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[a as usize]);
+                let reg_b =  integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[b as usize]);
+                let _ = self.set_flag(ZERO_FLAG, (reg_a ==0 && reg_b == 0) as u8);
                 let _ = self.set_flag(EQUAL_FLAG,(reg_a==reg_b) as u8);
                 let _ =self.set_flag(GREATER_THAN_FLAG,(reg_a>reg_b) as u8);
                 let _ =self.set_flag(LESS_THAN_FLAG,(reg_a<reg_b) as u8);
@@ -385,7 +396,6 @@ impl VM {
             GetFromStack(sp,reg) => {
                 let (reg,sp) = (*reg,*sp);
                 let regsp = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[sp as usize]) as RegisterDataType;
-
                 if let Some(content) = self.stack.get(regsp as usize) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
                 }else {
@@ -405,13 +415,25 @@ impl VM {
                 }
 
             }
+    
+            SetStack(loc,reg) => {
+                let (loc,reg) = (*loc,*reg);
+                let regloc = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[loc as usize]);
+                let index = regloc as usize;
+                  if index >= self.stack.len() {
+                    panic!("Cannot set element number: {:?} from stack with total items: {:?}",index,self.stack.len());
+                }
+                self.stack[index] =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
+               
+            }
+
             SetFromStackPointer(offset,reg) => {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
                 let index = sp  -1- regoffset as usize;
                 if index >= self.stack.len() {
-                    panic!("Cannot set element number: {:?} from stack with total items: {:?}",sp,self.stack.len());
+                    panic!("Cannot set element number: {:?}  from stack pointer from stack with total items: {:?}",sp,self.stack.len());
                 }
                 self.stack[index] =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
                 
@@ -513,10 +535,22 @@ impl VM {
         
             TruncateStack(a) => {
                 
-                let val = self.registers[*a as usize];
+                let val = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[*a as usize]);
                 for _ in 0..val {
                     self.stack.pop();
                 }
+            }
+            TruncateStackRange(rega,regb) => {
+                let (rega,regb) = (*rega,*regb); 
+                let min = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[rega as usize]) as usize;
+                let max = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[regb as usize]) as usize;
+                self.stack.drain(min..max);
+                // TODO: makethis better
+                let mut i = 0 ;
+                for _ in min..max {
+                    i+=1;
+                }
+                self.sp -=i;
             }
 
            Movf(a,b) => {
@@ -584,6 +618,10 @@ impl VM {
                     std::process::exit(1);
                 }
             }
+            GetStackPointer(dest) => {
+                let dest = *dest;
+                self.registers[dest as usize] = twos_complement!(RegisterDataType,self.sp as iRegisterDataType);
+            }
             _ => unimplemented!()
 
         }
@@ -645,24 +683,6 @@ impl VM {
         self.run_current_inst();
         
     }
-
-    pub fn run_label_raw_inst(&mut self,label_loc:usize) {
-             // Push command pointer onto a buffer 
-        self.return_addresses.push(self.command_pointer.into());
-        self.command_pointer = label_loc;
-        while self.instructions[self.command_pointer] != Instruction::Return {
-            let cur_inst = self.instructions[self.command_pointer].clone();
-            self.run_instruction(&cur_inst);
-            self.command_pointer += 1;
-        }
-
-
-        let cur_inst = self.instructions[self.command_pointer].clone();
-        self.run_instruction(&cur_inst);
-
-        self.command_pointer += 1;
-    }
-
     pub fn run_current_inst(&mut self) {
         
         let cur_inst = self.instructions[self.command_pointer].clone();
@@ -708,6 +728,7 @@ impl VM {
                                 let loc = v.0;
                                 Jump(Num(loc as u32))
                             }else {
+                                println!("{:?}",s);
                                 unreachable!()
                             }
                         }
@@ -802,6 +823,21 @@ impl VM {
 
                 }
 
+                Call(s) => {
+                    use crate::instruction::StringNumberUnion::*;
+                    match s {
+                        String(s) => {
+                            if let Some(v) = self.labels.get(s) {
+                                let loc = v.0;
+                                Call(Num(loc as u32))
+                            }else {
+                                unreachable!()
+                            }
+                        }
+                        Num(n) => Call(Num(*n)),
+                    }
+                }
+
                 _ => self.instructions[i].clone()
             };
 
@@ -824,24 +860,6 @@ impl VM {
             panic!("Flag {:?} not found",flag);
         }
         Ok(())
-    }
-
-    pub fn start_label(&mut self, flag_name:&str) {
-        if self.labels.get(&flag_name.to_string()).is_some() { panic!("Cannot create label with name: {:?} as it is already defined.",{flag_name}); }
-        
-        self.labels.insert(flag_name.to_string(),(self.last_command,None));
-    }
-
-    pub fn end_label(&mut self, flag_name:&str) {
-        todo!();
-        if let Some((_start,end)) = self.labels.get_mut(&flag_name.to_string()) {
-                if end.is_some() {
-                    panic!("Unable to end label {:?} as it is already ended",flag_name);
-                }   
-                *end = Some(self.last_command);
-        }else {
-            panic!("Unable to end label as it does not exist: {:?}",flag_name);
-        }
     }
 
     pub fn register_start(&mut self) {

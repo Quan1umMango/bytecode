@@ -39,6 +39,7 @@ pub enum NodeInstruction  {
     NodeInstructionPush   {value:NodeExpr},
     NodeInstructionPop    {value:NodeExpr},
 
+    NodeInstructionCall           {value:NodeExpr},
     NodeInstructionJump           {value:NodeExpr},
     NodeInstructionJumpIfZero     {value:NodeExpr},
     NodeInstructionJumpIfNotZero  {value:NodeExpr},
@@ -51,6 +52,7 @@ pub enum NodeInstruction  {
 
     NodeInstructionGetFromStack        {lhs:NodeExpr, rhs:NodeExpr},
     NodeInstructionGetFromStackPointer {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionSetStack {lhs:NodeExpr, rhs:NodeExpr},
     NodeInstructionSetFromStackPointer {lhs:NodeExpr, rhs:NodeExpr},
 
     NodeInstructionMalloc    {value:NodeExpr},
@@ -80,6 +82,8 @@ pub enum NodeInstruction  {
     NodeInstructionDisplayf {value:NodeExpr},
     NodeInstructionDisplayChar {value: NodeExpr},
     NodeInstructionGetFlag { lhs: NodeExpr, rhs:NodeExpr},
+    NodeInstructionGetStackPointer {lhs:NodeExpr},
+    NodeInstructionTruncateStackRange {lhs:NodeExpr,rhs:NodeExpr},
 }
 
 
@@ -532,6 +536,34 @@ impl  Parser {
         None
     }
 
+  pub fn parse_call(&mut self) -> Option<NodeInstruction> {
+        if let Some(_call_tok) = self.try_consume(TokenType::Call) {
+
+            if let Some(reg) = self.try_consume(TokenType::Ident) {
+                return Some(NodeInstruction::NodeInstructionCall {
+                    value:NodeExpr::NodeExprLabelName{value:reg}
+                });
+            }else if let Some(ad) = self.try_consume(TokenType::IntLit) {
+                let int = ad.value.as_ref().unwrap().parse::<i32>().unwrap();
+                if int < 0 {
+                    println!("Expected label or instruction number to call, found negative integer.");
+                    std::process::exit(1);
+                }
+                return Some(NodeInstruction::NodeInstructionCall {
+                    value:NodeExpr::NodeExprIntLit{value:ad}
+                })
+
+            }
+            else {
+                println!("Expected label or instruction number to call.");
+                std::process::exit(1);
+            }
+        }
+        None
+    }
+
+
+
     pub fn parse_jump(&mut self) -> Option<NodeInstruction> {
         if let Some(_jump_tok) = self.try_consume(TokenType::Jump) {
 
@@ -752,6 +784,40 @@ impl  Parser {
         }
         None
     }
+
+    #[allow(unused_assignments)]
+    pub fn parse_setstack(&mut self) -> Option<NodeInstruction> {
+        if let Some(_sets_tok) = self.try_consume(TokenType::SetStack) {
+            let mut lhs:Option<NodeExpr> = None;
+            let mut rhs: Option<NodeExpr> = None;
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                lhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register to set from stack.");
+                std::process::exit(1);
+            }
+
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                rhs =Some(NodeExpr::NodeExprRegister{value:reg});
+
+            }else {
+                println!("Expected register literal to set from stack. (2nd argument)\n Found: {:?}",self.consume_token());
+                std::process::exit(1);
+            }
+            return Some(NodeInstruction::NodeInstructionSetStack{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+        }
+        None
+    }
+
+
+
     #[allow(unused_assignments)]
     pub fn parse_setfromsp(&mut self) -> Option<NodeInstruction> {
         if let Some(_setsp_tok) = self.try_consume(TokenType::SetFromStackPointer) {
@@ -799,6 +865,40 @@ impl  Parser {
                 std::process::exit(1);
             }
         } 
+        None
+    }
+
+    #[allow(unused_assignments)]
+    pub fn parse_truncstackrange(&mut self) -> Option<NodeInstruction> {
+         if let Some(_getsp_tok) = self.try_consume(TokenType::TruncateStackRange) {
+            let mut lhs:Option<NodeExpr> = None;
+            let mut rhs: Option<NodeExpr> = None;
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                lhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register as min value of range to truncate stack from.");
+                std::process::exit(1);
+            }
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                rhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else if let Some(int) = self.try_consume(TokenType::IntLit) {
+                rhs =Some(NodeExpr::NodeExprIntLit{value:int});
+
+
+            }else {
+                println!("Expected either integer or register as max value of range to truncate stack from.");
+                std::process::exit(1);
+            }
+            return Some(NodeInstruction::NodeInstructionTruncateStackRange{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+        }
         None
     }
 
@@ -1138,6 +1238,25 @@ impl  Parser {
         } 
         None
     }
+    pub fn parse_getsp(&mut self) -> Option<NodeInstruction> {
+        if let Some(_getsp_tok) = self.try_consume(TokenType::GetStackPointer) {
+            let lhs = {
+                if let Some(reg) = self.try_consume(TokenType::Register) {
+                    NodeExpr::NodeExprRegister{value:reg}
+                }else if let Some(rint) = self.try_consume(TokenType::IntLit) {
+                    NodeExpr::NodeExprIntLit{value:rint}
+                } else {
+                    println!("Expected register to get stack pointer into, found {:?}",self.peek_token());
+                    std::process::exit(1);
+                }
+            };
+            
+            return Some(NodeInstruction::NodeInstructionGetStackPointer{lhs});
+        } 
+        None
+    }
+
+
 
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
         while let Some(_cur_token) = self.peek_token() {
@@ -1208,6 +1327,9 @@ impl  Parser {
             if let Some(jump) = self.parse_jump() {
                 return Some(jump)
             }
+            if let Some(call) = self.parse_call() {
+                return Some(call)
+            }
             if let Some(jz) = self.parse_jump_zero() {
                 return Some(jz)
             }
@@ -1237,6 +1359,9 @@ impl  Parser {
             if let Some(gfsp) = self.parse_getfromsp() {
                 return Some(gfsp)
             }
+            if let Some(ss) = self.parse_setstack() {
+                return Some(ss)
+            }
             if let Some(sfsp) = self.parse_setfromsp() {
                 return Some(sfsp)
             }
@@ -1259,8 +1384,12 @@ impl  Parser {
             if let Some(getflag) = self.parse_getflag() {
                 return Some(getflag);
             }
-
-
+            if let Some(getsp) = self.parse_getsp() {
+                return Some(getsp);
+            }
+            if let Some(tsr) = self.parse_truncstackrange() {
+                return Some(tsr);
+            }
             else {
                 break;
             }
@@ -1325,10 +1454,6 @@ impl  Parser {
     pub fn peek_token(&self) -> Option<Token> {
         return self.tokens.get(self.index).cloned()
     } 
-
-    pub fn peek_token_back(&self,i:usize) -> Option<Token> {
-        return self.tokens.get(self.index-i).cloned();
-    }
 
     pub fn try_consume(&mut self, token_type:TokenType) -> Option<Token> {
         if self.peek_token().is_some() && self.peek_token().unwrap().token_type == token_type  {

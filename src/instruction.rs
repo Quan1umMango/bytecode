@@ -28,6 +28,8 @@ pub enum Instruction {
     Pop(InstructionParamType),
 
     Jump(StringNumberUnion),
+    Call(StringNumberUnion), // Same as Jump but stores the return address and returns to the
+                             // address when ret is called
     JumpIfZero(StringNumberUnion),
     JumpIfNotZero(StringNumberUnion),
     JumpIfEqual(StringNumberUnion),
@@ -40,6 +42,7 @@ pub enum Instruction {
     GetFromStack(InstructionParamType,InstructionParamType),
     GetFromStackPointer(InstructionParamType,InstructionParamType),
 
+    SetStack(InstructionParamType,InstructionParamType),
     SetFromStackPointer(InstructionParamType,InstructionParamType),
     Malloc(InstructionParamType),
     GetMemory(InstructionParamType,InstructionParamType),
@@ -70,6 +73,8 @@ pub enum Instruction {
     DisplayChar(InstructionParamType),
     
     GetFlag(InstructionParamType,InstructionParamType),
+    GetStackPointer(InstructionParamType),
+    TruncateStackRange(InstructionParamType,InstructionParamType),
 }
 
 impl Instruction {
@@ -91,11 +96,13 @@ impl Instruction {
             Add(a,b) | Sub(a,b) | Div(a,b) | Mul(a,b) | Mod(a,b) |
             Addf(a,b) | Subf(a,b) | Divf(a,b) | Mulf(a,b) | Modf(a,b) | 
             Compare(a,b) |
-            GetFromStack(a,b) | GetFromStackPointer(a,b) | SetFromStackPointer(a,b) |
+            GetFromStack(a,b) | GetFromStackPointer(a,b) | SetFromStackPointer(a,b) | SetStack(a,b) |
             GetMemory(a,b) |
             SetMemory(a,b) |
             Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)|
-            GetFlag(a,b)
+            GetFlag(a,b) |
+
+            TruncateStackRange(a,b)
                 => {
                 
                 let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
@@ -114,7 +121,8 @@ impl Instruction {
                 PushRegister(a)|Pop(a)|
                 PushFloatRegister(a) |PopFloat(a)|
                 TruncateStack(a)|
-                Not(a) 
+                Not(a)| 
+                GetStackPointer(a)
                 => {
                     let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
                     let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
@@ -140,8 +148,8 @@ impl Instruction {
                 JumpIfEqual(s)|
                 JumpIfNotEqual(s)|
                 JumpIfGreater(s)|
-                JumpIfLess(s)
-                => {
+                JumpIfLess(s)|
+                Call(s) => {
                     use StringNumberUnion::*;
                 match s {
                     Num(a) => {
@@ -211,12 +219,16 @@ impl Instruction {
             Mulf(_, _) => 35,
             Divf(_, _) => 36,
             Modf(_, _) => 37,
-  Return => 38,
+            Return => 38,
             DisplayValue(_) => 39,
- PushFloatRegister(_) => 40,
+            PushFloatRegister(_) => 40,
             PopFloat(_) => 41,
             DisplayChar(_) => 42,
-           GetFlag(_,_) => 43
+            GetFlag(_,_) => 43,
+            SetStack(_,_) => 44,
+            GetStackPointer(_) => 45,
+            TruncateStackRange(_,_) => 46,
+            Call(_) => 47,
         }
     }
 
@@ -269,6 +281,10 @@ impl Instruction {
             41 => Some(PopFloat(InstructionParamType::default())),
             42 => Some(DisplayChar(InstructionParamType::default())),
             43 => Some(GetFlag(InstructionParamType::default(),InstructionParamType::default())),
+            44 => Some(SetStack(InstructionParamType::default(),InstructionParamType::default())),
+            45 => Some(GetStackPointer(InstructionParamType::default())),
+            46 => Some(TruncateStackRange(InstructionParamType::default(),InstructionParamType::default())),
+            47 => Some(Call(StringNumberUnion::default())),
             _ => None,
         }
     }
@@ -281,11 +297,12 @@ impl Instruction {
             Add(_,_) | Sub(_,_) | Div(_,_) | Mul(_,_) | Mod(_,_) |
                 Addf(_,_) | Subf(_,_) | Divf(_,_) | Mulf(_,_) | Modf(_,_) | 
                 Compare(_,_) |
-                GetFromStack(_,_) | GetFromStackPointer(_,_) | SetFromStackPointer(_,_) |
+                GetFromStack(_,_) | GetFromStackPointer(_,_) | SetFromStackPointer(_,_) | SetStack(_,_) |
                 GetMemory(_,_) |
                 SetMemory(_,_) |
                 Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_) |
-                GetFlag(_,_)
+                GetFlag(_,_) |
+                TruncateStackRange(_,_)
                 => {
                     (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
                 }
@@ -297,7 +314,8 @@ impl Instruction {
                 Push(_) | 
                 PushFloatRegister(_)| PopFloat(_) |
                 TruncateStack(_)|
-                Not(_) 
+                Not(_) |
+                GetStackPointer(_)
                 => {
                     (Some(REGISTER_PARAM_SIZE),None)
                 }
@@ -315,7 +333,8 @@ impl Instruction {
                 JumpIfEqual(_) |
                 JumpIfNotEqual(_) |
                 JumpIfGreater(_) |
-                JumpIfLess(_) => {
+                JumpIfLess(_) |
+                Call(_) => {
                     (Some(JUMP_DESTINATION_PARAM_SIZE),None)
                 }
 
