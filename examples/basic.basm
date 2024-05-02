@@ -8,7 +8,7 @@ label main: ; Heart of our program. This where code execution begins.
     push rax     ; Push onto the stack
     pop rcx      ; Pop into rcx 
 
-    cmp rcx rax  ; Compare. This sets flags based on the result
+    cmp rcx, rax  ; Compare. This sets flags based on the result
     je Equal     ; Jump if equal to label Equal 
 
     halt         ; Halts the program (optional). If this is missing then the program 

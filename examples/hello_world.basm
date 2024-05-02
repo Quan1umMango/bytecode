@@ -5,5 +5,4 @@ label main:
   @loadstring("Manual lenght") ; Incase you want to manually give the length (may be for string concatenation)
                                ; you can use the normal one. This only loads the string onto the stack without
                                ; the lenght
-  ret
 
