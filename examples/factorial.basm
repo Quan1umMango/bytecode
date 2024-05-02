@@ -2,12 +2,12 @@ label __factorial:
   mul rcx, rax 
   sub rax, 1
   cmp rax, 1
-  jne __factorial 
+  jg __factorial 
   ret
 
 label factorial:
   pop rax
   mov rcx,1 
-  jmp __factorial
+  call __factorial
   ret
 

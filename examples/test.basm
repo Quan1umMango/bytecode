@@ -1,8 +1,0 @@
-@import("./math.basm")
-@import("./print.basm")
-label main:
-  push 8 
-  jmp factorial
-  display rcx
-  jmp example
-  

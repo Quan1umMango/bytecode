@@ -75,6 +75,11 @@ pub enum Instruction {
     GetFlag(InstructionParamType,InstructionParamType),
     GetStackPointer(InstructionParamType),
     TruncateStackRange(InstructionParamType,InstructionParamType),
+    
+    // prints string from the stack 
+    // arg 1: len of the string.
+    // prints until it reaches a null character or the string len
+    Write(InstructionParamType)
 }
 
 impl Instruction {
@@ -122,7 +127,8 @@ impl Instruction {
                 PushFloatRegister(a) |PopFloat(a)|
                 TruncateStack(a)|
                 Not(a)| 
-                GetStackPointer(a)
+                GetStackPointer(a)|
+                Write(a)
                 => {
                     let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
                     let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
@@ -229,6 +235,7 @@ impl Instruction {
             GetStackPointer(_) => 45,
             TruncateStackRange(_,_) => 46,
             Call(_) => 47,
+            Write(_) => 48
         }
     }
 
@@ -285,6 +292,7 @@ impl Instruction {
             45 => Some(GetStackPointer(InstructionParamType::default())),
             46 => Some(TruncateStackRange(InstructionParamType::default(),InstructionParamType::default())),
             47 => Some(Call(StringNumberUnion::default())),
+            48 => Some(Write(InstructionParamType::default())),
             _ => None,
         }
     }
@@ -315,7 +323,8 @@ impl Instruction {
                 PushFloatRegister(_)| PopFloat(_) |
                 TruncateStack(_)|
                 Not(_) |
-                GetStackPointer(_)
+                GetStackPointer(_) |
+                Write(_)
                 => {
                     (Some(REGISTER_PARAM_SIZE),None)
                 }

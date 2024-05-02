@@ -27,7 +27,7 @@ impl Generator {
 
     // NOTE: Make this code better lol.
     pub fn generate(&mut self,no_main:bool) {
-        let external_labels: Vec<(Vec<(String,usize)>,NodeInstruction)> = self.generate_builtin();
+        let external_labels: Vec<(Vec<(String,usize)>,NodeInstruction)> = self.generate_imports();
         let mut new_instructions: Vec<(Vec<String>,NodeInstruction)> = Vec::new();
         // We first push the external instructions into new_instructions and attach any label
         // identifier they have.
@@ -60,7 +60,7 @@ impl Generator {
     }
 
 
-    pub fn generate_builtin(&mut self) -> Vec<(Vec<(String,usize)>,NodeInstruction)> {
+    pub fn generate_imports(&mut self) -> Vec<(Vec<(String,usize)>,NodeInstruction)> {
         let mut out = Vec::new();
         for builtin in self.builtins.iter() {
             match builtin {
@@ -792,6 +792,21 @@ NodeInstructionDisplayChar { value } => {
                         NodeExpr::NodeExprLabelName{value:_v} => {
                             let label_name=  get_jump_label(value.clone()).unwrap();
                             self.vm.add_instruction(Instruction::Call(crate::instruction::StringNumberUnion::String(label_name)));
+                        }
+                        _ => unreachable!()
+                    }
+                }
+
+                NodeInstructionWrite { value } => {
+                    match value {
+                        NodeExpr::NodeExprIntLit { value } => {
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER,int));
+                            self.vm.add_instruction(Instruction::Write(RESERVEREGISTER));
+
+                        }
+                        NodeExpr::NodeExprRegister { value:_ } => {
+                            self.vm.add_instruction(Instruction::Write(get_register(&value)));
                         }
                         _ => unreachable!()
                     }

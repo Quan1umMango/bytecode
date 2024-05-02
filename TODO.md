@@ -17,3 +17,5 @@
     - [x] fdisplay
 - [x] Add displaychar 
 - [x] Add imports
+- [X] Add string loading and printing 
+- [X] Add function calls

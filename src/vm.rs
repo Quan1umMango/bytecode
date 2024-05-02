@@ -123,7 +123,8 @@ impl VM {
                         PushFloatRegister(ref mut a)| PopFloat(ref mut a) | 
                         TruncateStack(ref mut a)|
                             Not(ref mut a) |
-                        GetStackPointer(ref mut a)
+                        GetStackPointer(ref mut a) | 
+                        Write(ref mut a)
                             => {
                                 let size_reg = param_size.0.unwrap();
                             let param = s[i..i+size_reg]
@@ -286,6 +287,7 @@ impl VM {
                 let register_data = to_binary_slice!(RegisterDataType,self.registers[*a as usize]).try_into().unwrap();
                 
                 self.stack.push(register_data);
+
                 self.sp += 1;
             }
             Pop(a) => {
@@ -621,6 +623,30 @@ impl VM {
             GetStackPointer(dest) => {
                 let dest = *dest;
                 self.registers[dest as usize] = twos_complement!(RegisterDataType,self.sp as iRegisterDataType);
+            }
+            Write(len_reg) => {
+                use std::io::Write;
+                let len_reg = *len_reg;
+                let len = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[len_reg as usize]);
+                if len < 0 {
+                    println!("Runtime Error: Exxpected postive integer to write, found {}",len);
+                    std::process::exit(1);
+                }
+
+                let chars = self.stack.drain(self.stack.len()-len as usize..)
+                    .map(|x|TryInto::<u8>::try_into(
+                            integer_from_twos_complement!(iRegisterDataType,RegisterDataType,binary_slice_to_number!(iRegisterDataType,x))).unwrap_or(0) as char)
+                    .collect::<Vec<char>>()
+                    .into_iter().collect::<String>();                                
+
+                print!("{}",chars);
+                match std::io::stdout().flush() {
+                    Ok(_) => (),
+                    Err(e) => {
+                        println!("Unsuccessful flushing to the output: {:?}",e);
+                        std::process::exit(1);
+                    }
+                }
             }
             _ => unimplemented!()
 

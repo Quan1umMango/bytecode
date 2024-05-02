@@ -1,0 +1,9 @@
+label main:
+  @loadstringn("Hello World!") ; loadstringn loads the string onto the stack and also the length of the string 
+  pop rax                      ; So we pop it off here
+  write rax                    ; and use it here 
+  @loadstring("Manual lenght") ; Incase you want to manually give the length (may be for string concatenation)
+                               ; you can use the normal one. This only loads the string onto the stack without
+                               ; the lenght
+  ret
+

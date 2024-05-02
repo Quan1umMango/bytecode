@@ -12,7 +12,6 @@ mod assembler;
 
 
 fn main() {
-
     use assembler::Basm;
     use std::env;
 

@@ -27,6 +27,7 @@ pub enum NodeExpr {
 #[derive(Debug,Clone)]
 pub enum NodeBuiltin {
     NodeBuiltinImport {value:NodeExpr},
+    NodeBuiltinLoadString { value: NodeExpr , load_len:bool}
 }
 
 #[derive(Debug,Clone)]
@@ -84,6 +85,7 @@ pub enum NodeInstruction  {
     NodeInstructionGetFlag { lhs: NodeExpr, rhs:NodeExpr},
     NodeInstructionGetStackPointer {lhs:NodeExpr},
     NodeInstructionTruncateStackRange {lhs:NodeExpr,rhs:NodeExpr},
+    NodeInstructionWrite {value:NodeExpr},
 }
 
 
@@ -1257,6 +1259,21 @@ impl  Parser {
     }
 
 
+    pub fn parse_write(&mut self) -> Option<NodeInstruction> {
+        if self.try_consume(TokenType::Write).is_none() { return None }
+        if let Some(reg) = self.try_consume(TokenType::Register) {
+            return Some(NodeInstruction::NodeInstructionWrite {
+                value: NodeExpr::NodeExprRegister{value:reg}
+            })
+        }else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+            return Some(NodeInstruction::NodeInstructionWrite {
+                value: NodeExpr::NodeExprIntLit{value:int_lit}
+            })
+        }else {
+            println!("Expected either register or integer literal for write, found {:?}",self.peek_token());
+            std::process::exit(1);
+        }
+    }
 
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
         while let Some(_cur_token) = self.peek_token() {
@@ -1390,6 +1407,9 @@ impl  Parser {
             if let Some(tsr) = self.parse_truncstackrange() {
                 return Some(tsr);
             }
+            if let Some(write) = self.parse_write(){
+                return Some(write);
+            }
             else {
                 break;
             }
@@ -1404,7 +1424,7 @@ impl  Parser {
                 match builtin_ident.as_str() {
                     "import" => {
                         if self.try_consume(TokenType::LParen).is_none() {
-                            println!("Expected ( after @Import, found {:?}",self.peek_token());
+                            println!("Expected ( after @import, found {:?}",self.peek_token());
                             std::process::exit(1);
                         }
                         if let Some(string) = self.try_consume(TokenType::StringLit) {
@@ -1417,7 +1437,30 @@ impl  Parser {
                             })
 
                         }else {
-                            println!("Expected string in @Import, found {:?}",self.peek_token());
+                            println!("Expected string in @import, found {:?}",self.peek_token());
+                            std::process::exit(1);
+                        }
+                    }
+                   
+
+                    "loadstring" | "loadstringn" => {
+                        if self.try_consume(TokenType::LParen).is_none() {
+                            println!("Expected ( after @loadstring, found {:?}",self.peek_token());
+                            std::process::exit(1);
+                        }
+                        if let Some(string) = self.try_consume(TokenType::StringLit) {
+                            if self.try_consume(TokenType::RParen).is_none() {
+                                println!("Expected ( to close @loadstring function, found {:?}",self.peek_token());
+                                std::process::exit(1);   
+                            }  
+
+                            return Some(NodeBuiltin::NodeBuiltinLoadString{
+                                value: NodeExpr::NodeExprStringLit{value:string},
+                                load_len: builtin_ident.as_str() == "loadstringn"
+                            })
+
+                        }else {
+                            println!("Expected string in @loadstring, found {:?}",self.peek_token());
                             std::process::exit(1);
                         }
                     }
@@ -1437,7 +1480,40 @@ impl  Parser {
       //-> Option<Vec<NodeBuiltin>,(HashMap<String,NodeLabel>)> 
         while self.peek_token().is_some() {
             if let Some(builtin) = self.parse_builtin() {
-                self.builtins.push(builtin);        
+                match builtin{
+                    NodeBuiltin::NodeBuiltinLoadString { value, load_len } => {
+                       match value {
+                           NodeExpr::NodeExprStringLit { value } => {
+                                for v in value.value.as_ref().unwrap().chars() {
+                                    self.instructions.push(
+                                        NodeInstruction::NodeInstructionPush{
+                                            value:NodeExpr::NodeExprIntLit{
+                                                value:Token {
+                                                    value: Some((v as u8).to_string()),
+                                                    token_type: TokenType::IntLit,
+                                                }
+                                            }
+                                        }
+                                    );
+                                }
+                                if !load_len { continue }
+                                // Push length of string 
+                                    self.instructions.push(
+                                        NodeInstruction::NodeInstructionPush{
+                                            value:NodeExpr::NodeExprIntLit{
+                                                value:Token {
+                                                    value: Some(value.value.unwrap().len().to_string()),
+                                                    token_type: TokenType::IntLit,
+                                                }
+                                            }
+                                        }
+                                    )
+                           }
+                           _ => unreachable!()
+                       } 
+                    }
+                    _ => self.builtins.push(builtin)
+                }
             }else  if let Some((name,labelindex)) = self.parse_label() {
                 self.labels.insert(name,labelindex);
             }else if let Some(inst) = self.parse_inst() {
