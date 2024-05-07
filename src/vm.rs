@@ -1,7 +1,9 @@
 use crate::{
-    instruction::Instruction,
+instruction::Instruction,
     constants_and_types::*,
+    memory::*,
 };
+
 
 use crate::{
     to_binary_slice,binary_slice_to_number,
@@ -13,24 +15,24 @@ use crate::{
 
 use std::collections::HashMap;
 pub struct VM {
-    registers: [RegisterDataType;5],
+    registers: [RegisterDataType;6],
     floating_point_registers: [FloatRegisterDataType;5],
     stack:Vec<[u8;STACK_DATA_SIZE]>,
     sp:usize,
-   pub instructions:[Instruction;1000],
+    instructions:[Instruction;1000],
     command_pointer: usize, 
     last_command:usize,
     flags:[u8;16],
     return_addresses:Vec<usize>,
     labels:HashMap<String,(usize,Option<usize>)>,
-    memory: Vec<Option<RegisterDataType>>,
+    memory: MemoryHandler,
 }
 
 impl VM {
     pub fn new() -> Self {
         const ARRAY_REPEAT_VALUE:Instruction = Instruction::Halt;
         Self {
-            registers: [0; 5],
+            registers: [0; 6],
             floating_point_registers: [0.0;5],
             stack: Vec::new(),
             sp: 0,
@@ -40,7 +42,7 @@ impl VM {
             flags: [0;16],
             labels:HashMap::new(),
             return_addresses: Vec::new(),
-            memory:Vec::new(),
+            memory:MemoryHandler::new()
         }
     }
 
@@ -79,11 +81,11 @@ impl VM {
                 
                 let param_size = instruction.get_param_binary_size();
                 match param_size {
-                    (None,None) => {
+                    (None,None,None) => {
                         println!("Bytecode Corruption Error: expected parameters, found nothing for instruction: {:?}",instruction);
                         std::process::exit(1);
                     }
-                    (None,Some(_)) => unreachable!(),
+                    (None,Some(_),None) => unreachable!(),
                     _ => {}
                 }
                 use Instruction::*;
@@ -92,8 +94,7 @@ impl VM {
                         Addf(ref mut a, ref mut b) | Subf(ref mut a, ref mut b) | Divf(ref mut a, ref mut b) | Mulf(ref mut a, ref mut b) | Modf(ref mut a, ref mut b) | 
                         Compare(ref mut a, ref mut b) |
                         GetFromStack(ref mut a, ref mut b) | GetFromStackPointer(ref mut a, ref mut b) | SetFromStackPointer(ref mut a, ref mut b) | SetStack(ref mut a, ref mut b) |
-                        GetMemory(ref mut a, ref mut b) |
-                        SetMemory(ref mut a, ref mut b) |
+                 
                         Or(ref mut a, ref mut b) | And(ref mut a, ref mut b) | Xor(ref mut a, ref mut b) | Nand(ref mut a, ref mut b) |
                         GetFlag(ref mut a, ref mut b) |
                         TruncateStackRange(ref mut a, ref mut b)
@@ -124,7 +125,9 @@ impl VM {
                         TruncateStack(ref mut a)|
                             Not(ref mut a) |
                         GetStackPointer(ref mut a) | 
-                        Write(ref mut a)
+                        Write(ref mut a) |
+                        Malloc(ref mut a) |
+                        Free(ref mut a)
                             => {
                                 let size_reg = param_size.0.unwrap();
                             let param = s[i..i+size_reg]
@@ -216,8 +219,40 @@ impl VM {
                             i += step_by; continue;
 
                         }
-
-                    _ => unimplemented!("{:?}",instruction)
+                        GetMemory(ref mut a, ref mut b, ref mut c) |
+                            SetMemory(ref mut a, ref mut b, ref mut c) => {
+                                if param_size.0.is_none() {
+                                    println!("Bytecode Error: Argument 0 not found for {:?}",instruction.clone());
+                                    std::process::exit(1);
+                                }
+                                if param_size.1.is_none() {
+                                    println!("Bytecode Error: Argument 1 not found for {:?}",instruction.clone());
+                                    std::process::exit(1);
+                                }
+                                if param_size.2.is_none() {
+                                    println!("Bytecode Error: Argument 2 not found for {:?}",instruction.clone());
+                                    std::process::exit(1);
+                                }
+                                let new_values = { 
+                                    let mut n =Vec::new();
+                                        for _ in 0..3 {
+                                            let param =&s[i..i+param_size.0.unwrap()]
+                                                .chars()
+                                                .map(|x| x.to_digit(2).unwrap() as u8).collect::<Vec<u8>>();
+                                            let param_int = binary_slice_to_number!(InstructionParamType,param);
+                                            n.push(param_int);
+                                            i += param_size.0.unwrap();
+                                        };
+                                    n
+                                }; 
+                                *a = new_values[0];
+                                *b = new_values[1];
+                                *c = new_values[2];
+                                v.push(instruction.clone());
+                                
+                             i += step_by;
+                            }
+                            _ => unimplemented!("{:?}",instruction)
 
 
                 }
@@ -291,13 +326,13 @@ impl VM {
                 self.sp += 1;
             }
             Pop(a) => {
-                
-                let pop = self.stack.pop();
-                if pop.is_none() {
+                if self.stack.len() == 0 {
                     println!("Runtime Error: Stack cannot be popped from as stack is empty.");
                     std::process::exit(1);
                 }
-                let pop_num = binary_slice_to_number!(RegisterDataType,&pop.unwrap());
+                let pop = self.stack.pop().unwrap();
+                
+                let pop_num = binary_slice_to_number!(RegisterDataType,&pop);
                 self.registers[*a as usize] = pop_num;
                 self.sp -= 1;
             }
@@ -442,35 +477,60 @@ impl VM {
 
             }
 
-            Malloc(size) => {
-                // Check if any available memory with that size is available
-                if let Some(available_memory) = self.is_memory_available(*size as usize) {
-                    // all good, idk what to do here
-                    self.stack.push(to_binary_slice!(RegisterDataType,available_memory.0).try_into().unwrap());
-                    self.sp += 1;
-                }else {
-                    let p = self.allocate_memory(*size as usize);
-                    self.stack.push(to_binary_slice!(RegisterDataType,p).try_into().unwrap());
-                    self.sp += 1;
-                }
+            Malloc(sizereg) => {
+                let memory_size = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[*sizereg as usize]);
+                let id = self.memory.create_memory_unit(memory_size as usize);
+                let id = to_binary_slice!(RegisterDataType,twos_complement!(RegisterDataType,id as isize));
+                self.stack.push(id.as_slice().try_into().unwrap());
+                self.sp+=1;
             }
 
-            GetMemory(reg,loc) => {
+            Free(locreg) => {
+                let mem_id = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[*locreg as usize]);
+            match self.memory.free(mem_id as usize) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Unable to free memory unit {:?}: {}",mem_id,e);
+                    std::process::exit(1);
+                }
+            }
+            }
+
+            GetMemory(id,reg,offset) => {
                 
-                let (reg,loc) = (*reg,*loc);
-                if let Some(val) = self.memory.get(loc as usize) {
-                    self.registers[reg as usize] = val.unwrap_or(0);
+                let (id,reg,offset) = (*id,*reg,*offset);
+                let id = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[id as usize]);
+                let offset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
+                if let Some(mem_unit) = self.memory.get(id as usize) {
+                    if let Some(val) =mem_unit.get(offset as usize) {
+                        self.registers[reg as usize] = val;
+                    }else {
+                        panic!("Unable to get location {:?} in memory unit {:?}. Memory is not set",offset,id); 
+                    }
                 }else {
-                    panic!("Unable to get location {:?} that is out of memory.",loc);
+                    panic!("Unable to get memory unit {:?}: Does not exist.",id);
                 }
             }
 
-            SetMemory(reg,loc) => {
-                let (reg,loc) = (*reg,*loc);
-                if let Some(val) = self.memory.get_mut(loc as usize){
-                    *val = self.registers.get(reg as usize).copied();
+            SetMemory(id,reg,offset) => {
+                let (id,reg,offset) = (*id,*reg,*offset);
+                let id = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[id as usize]);
+                let reg = self.registers[reg as usize];
+                let offset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
+                if offset < 0 {
+                    panic!("Unable to set location {:?} in memory unit {:?}: Location must be a positive number ",offset,id);
+                }
+
+                if let Some(mem_unit) = self.memory.get_mut(id as usize) {
+                    match mem_unit.try_set(offset as usize,reg) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Unable to set location {:?} in memory unit {:?}: {}",offset,id,e);
+                            std::process::exit(1);
+                        }
+                    }
                 }else {
-                    panic!("couldn't get memory location:{:?}",loc);
+                    panic!("Unable to set memory unit {:?}: Does not exist.",id);
                 }
             }
 
@@ -651,32 +711,6 @@ impl VM {
             _ => unimplemented!()
 
         }
-    }
-
-    pub fn is_memory_available(&self, size:usize) -> Option<(usize,usize)> {
-        let mut start = 0;
-        let mut end = size as usize-1;
-        while end <= self.memory.len() {
-            let cur_window = &self.memory[start..end];
-
-
-            if cur_window.iter().find(|x| x.is_some()).is_some() {
-                start += 1;
-                end +=1;
-                continue
-            }else {
-
-                return Some((start,end))
-            }
-        }
-        return None;
-
-    }
-
-    pub fn allocate_memory(&mut self, size:usize) -> usize {
-        let p = self.memory.len();
-        self.memory.resize(size,None);
-        p
     }
 
     // See eval for more info 
@@ -922,5 +956,9 @@ impl VM {
 
     pub fn labels_mut(&mut self) -> &mut HashMap<String,(usize,Option<usize>)> {
         &mut self.labels
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        return &self.instructions;
     }
 }

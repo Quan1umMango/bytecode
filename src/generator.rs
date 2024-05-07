@@ -1,5 +1,5 @@
 use crate::{
-    parser::{NodeExpr,NodeLabel,NodeInstruction,NodeBuiltin,Parser},
+    parser::{NodeExpr,NodeInstruction,NodeBuiltin,Parser},
     instruction::Instruction,
     constants_and_types::*, 
     tokens::*,
@@ -459,8 +459,8 @@ NodeInstructionDisplayChar { value } => {
                     match value {
                         NodeExpr::NodeExprIntLit { value } => {
                             let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER,val));
-                            self.vm.add_instruction(Instruction::TruncateStack(RESERVEREGISTER));
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,val));
+                            self.vm.add_instruction(Instruction::TruncateStack(RESERVEREGISTER1));
                         }
                         NodeExpr::NodeExprRegister { value:_ } => {
                             self.vm.add_instruction(Instruction::TruncateStack(get_register(value)));
@@ -480,48 +480,90 @@ NodeInstructionDisplayChar { value } => {
                         }
                         NodeExpr::NodeExprIntLit { value } => {
                             let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::Mov(REGA,int));
-                            self.vm.add_instruction(Instruction::Malloc(REGA));
-                            self.vm.add_instruction(Instruction::Pop(REGA)); 
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
+                            self.vm.add_instruction(Instruction::Malloc(RESERVEREGISTER1));
                         },
                         _ => unreachable!()
                     }
 
-                },
-                NodeInstructionGetMemory{lhs, rhs} => {
-                    let lreg = get_register(&lhs);
-                    match rhs {
-                        NodeExpr::NodeExprRegister { value: _} => {
-                            self.vm.add_instruction(Instruction::GetMemory(lreg,get_register(&rhs)));
+                }
+                NodeInstructionFree{value} =>{
+                    match value {
+                        NodeExpr::NodeExprRegister { value } => {
+                            if let Some(register) = get_register_value(value.clone()) {
+                                self.vm.add_instruction(Instruction::Free(register));
+                            }else {
+                                panic!("Register {:?} does not exist.",value.value.clone().unwrap());
+                            }
                         }
                         NodeExpr::NodeExprIntLit { value } => {
-                            let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::PushRegister(lreg+1));
-                            self.vm.add_instruction(Instruction::Mov(lreg+1,val));
-                            self.vm.add_instruction(Instruction::GetMemory(lreg,lreg+1));
-                            self.vm.add_instruction(Instruction::Pop(lreg+1));
-                        }
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
+                            self.vm.add_instruction(Instruction::Free(RESERVEREGISTER1));
+                        },
                         _ => unreachable!()
-                    };
+                    }
 
-                },
-                NodeInstructionSetMemory{lhs, rhs} => {
+                }
+                NodeInstructionGetMemory{lhs, rhs,offset} => {
                     let lreg = get_register(&lhs);
-                    match rhs {
-                        NodeExpr::NodeExprRegister { value: _} => {
-                            self.vm.add_instruction(Instruction::SetMemory(lreg,get_register(&rhs)));
+                    let rreg = { 
+                        match rhs {
+                            NodeExpr::NodeExprRegister { value: _} => {
+                                get_register(&rhs)
+                                //self.vm.add_instruction(Instruction::GetMemory(lreg,get_register(&rhs)));
+                            }
+                            NodeExpr::NodeExprIntLit { value } => {
+                                let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                                self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,val));
+                                //self.vm.add_instruction(Instruction::GetMemory(lreg,lreg+1));
+                                //self.vm.add_instruction(Instruction::Pop(lreg+1));
+                                RESERVEREGISTER1
+                            }
+                            _ => unreachable!()
+                        }
+                    };
+                    match offset {
+                        NodeExpr::NodeExprRegister { value: _ } => {
+                            self.vm.add_instruction(Instruction::GetMemory(lreg,rreg,get_register(&offset)));
                         }
                         NodeExpr::NodeExprIntLit { value } => {
-                            let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::PushRegister(lreg+1));
-                            self.vm.add_instruction(Instruction::Mov(lreg+1,val));
-                            self.vm.add_instruction(Instruction::SetMemory(lreg,lreg+1));
-                            self.vm.add_instruction(Instruction::Pop(lreg+1));
+                                let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                                self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER2,val));
+                                self.vm.add_instruction(Instruction::GetMemory(lreg,rreg,RESERVEREGISTER2)); 
                         }
                         _ => unreachable!()
-                    };
-
+                    }
                 },
+                NodeInstructionSetMemory{lhs, rhs,offset} => {
+                    let lreg = get_register(&lhs);
+                    let rreg = { 
+                        match rhs {
+                            NodeExpr::NodeExprRegister { value: _} => {
+                                get_register(&rhs)
+                                //self.vm.add_instruction(Instruction::GetMemory(lreg,get_register(&rhs)));
+                            }
+                            NodeExpr::NodeExprIntLit { value } => {
+                                let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                                self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,val));
+                                //self.vm.add_instruction(Instruction::SetMemory(lreg,lreg+1));
+                                //self.vm.add_instruction(Instruction::Pop(lreg+1));
+                                RESERVEREGISTER1
+                            }
+                            _ => unreachable!()
+                        }
+                    };
+                    match offset {
+                        NodeExpr::NodeExprRegister { value: _ } => {
+                            self.vm.add_instruction(Instruction::SetMemory(lreg,rreg,get_register(&offset)));
+                        }
+                        NodeExpr::NodeExprIntLit { value } => {
+                                let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                                self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER2,val));
+                                self.vm.add_instruction(Instruction::SetMemory(lreg,rreg,RESERVEREGISTER2)); 
+                        }
+                        _ => unreachable!()
+                    }                },
 
                 NodeInstructionReturn=>{ self.vm.add_instruction(Instruction::Return); },
 
@@ -801,8 +843,8 @@ NodeInstructionDisplayChar { value } => {
                     match value {
                         NodeExpr::NodeExprIntLit { value } => {
                             let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER,int));
-                            self.vm.add_instruction(Instruction::Write(RESERVEREGISTER));
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
+                            self.vm.add_instruction(Instruction::Write(RESERVEREGISTER1));
 
                         }
                         NodeExpr::NodeExprRegister { value:_ } => {

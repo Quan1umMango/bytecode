@@ -57,8 +57,9 @@ pub enum NodeInstruction  {
     NodeInstructionSetFromStackPointer {lhs:NodeExpr, rhs:NodeExpr},
 
     NodeInstructionMalloc    {value:NodeExpr},
-    NodeInstructionGetMemory {lhs:NodeExpr, rhs:NodeExpr},
-    NodeInstructionSetMemory {lhs:NodeExpr, rhs:NodeExpr},
+    NodeInstructionFree      {value:NodeExpr},
+    NodeInstructionGetMemory {lhs:NodeExpr, rhs:NodeExpr,offset:NodeExpr},
+    NodeInstructionSetMemory {lhs:NodeExpr, rhs:NodeExpr, offset:NodeExpr},
 
     NodeInstructionReturn,
 
@@ -908,7 +909,7 @@ impl  Parser {
         if let Some(_malloc_tok) = self.try_consume(TokenType::Malloc) {
             if let Some(int) = self.try_consume(TokenType::IntLit) {
                 return Some(NodeInstruction::NodeInstructionMalloc {
-                    value: NodeExpr::NodeExprRegister{value:int}
+                    value: NodeExpr::NodeExprIntLit{value:int}
                 })               
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
                 return Some(NodeInstruction::NodeInstructionMalloc {
@@ -921,10 +922,31 @@ impl  Parser {
         }
         None
     }
+
+    pub fn parse_free(&mut self) -> Option<NodeInstruction> {
+        if let Some(_free_tok) = self.try_consume(TokenType::Free) {
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
+                return Some(NodeInstruction::NodeInstructionFree {
+                    value: NodeExpr::NodeExprIntLit{value:int}
+                })               
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                return Some(NodeInstruction::NodeInstructionFree {
+                    value: NodeExpr::NodeExprRegister{value:reg}
+                })
+            }else {
+                println!("Expected either integer or register to free memory.");
+                std::process::exit(1);
+            }        
+        }
+        None
+    }
+
+
     pub fn parse_getmem(&mut self) -> Option<NodeInstruction> {
         if let Some(_getmem_tok) = self.try_consume(TokenType::GetMemory) {
             let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
+            let mut offset: Option<NodeExpr> = None;
 
             if let Some(int) = self.try_consume(TokenType::IntLit) {
                 lhs = Some(NodeExpr::NodeExprIntLit{value:int});
@@ -937,6 +959,7 @@ impl  Parser {
 
             if self.try_consume(TokenType::Comma).is_none() {
                 println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
             }
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
@@ -944,7 +967,21 @@ impl  Parser {
                 println!("Expected register to get from memory. (2nd argument)");
                 std::process::exit(1);
             }
-            return Some(NodeInstruction::NodeInstructionGetMemory{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+             if let Some(int) = self.try_consume(TokenType::IntLit) {
+                offset = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                offset =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register to get from memory.");
+                std::process::exit(1);
+            }
+ 
+            return Some(NodeInstruction::NodeInstructionGetMemory{lhs:lhs.unwrap(),rhs:rhs.unwrap(),offset:offset.unwrap()})
 
         }
         None
@@ -954,6 +991,8 @@ impl  Parser {
         if let Some(_setmem_tok) = self.try_consume(TokenType::SetMemory) {
             let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
+            let mut offset: Option<NodeExpr> = None; 
+
             if let Some(int) = self.try_consume(TokenType::IntLit) {
                 lhs = Some(NodeExpr::NodeExprIntLit{value:int});
             }else if let Some(reg) = self.try_consume(TokenType::Register) {
@@ -968,11 +1007,31 @@ impl  Parser {
             }
             if let Some(reg) = self.try_consume(TokenType::Register) {
                 rhs =Some(NodeExpr::NodeExprRegister{value:reg});
-            }else {
-                println!("Expected register to set from memory. (2nd argument)");
+            
+            }else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+                rhs = Some(NodeExpr::NodeExprIntLit{value:int_lit});
+            }
+            else {
+                println!("Expected register or integer literal to set to memory. (2nd argument)");
                 std::process::exit(1);
             }
-            return Some(NodeInstruction::NodeInstructionSetMemory{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+             if let Some(int) = self.try_consume(TokenType::IntLit) {
+                offset = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                offset =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register to get from memory.");
+                std::process::exit(1);
+            }
+ 
+ 
+
+            return Some(NodeInstruction::NodeInstructionSetMemory{lhs:lhs.unwrap(),rhs:rhs.unwrap(),offset:offset.unwrap()})
 
         }
         None
@@ -1389,6 +1448,9 @@ impl  Parser {
             if let Some(malloc) = self.parse_malloc() {
                 return Some(malloc)
             }
+            if let Some(free) = self.parse_free() {
+                return Some(free)
+            }
             if let Some(gm) = self.parse_getmem() {
                 return Some(gm)
             }
@@ -1495,6 +1557,7 @@ impl  Parser {
                                             }
                                         }
                                     );
+                                        self.instruction_counter +=1;
                                 }
                                 if !load_len { continue }
                                 // Push length of string 
@@ -1507,7 +1570,8 @@ impl  Parser {
                                                 }
                                             }
                                         }
-                                    )
+                                    );
+                                        self.instruction_counter += 1;
                            }
                            _ => unreachable!()
                        } 
@@ -1548,6 +1612,7 @@ impl  Parser {
 
 }
 
+//Kinda useless funtion
 pub fn get_register_from_number(num:i32) -> Option<InstructionParamType> {
     if num < 0 {
         println!("Expected register or register number, found negative integer.");
@@ -1558,7 +1623,8 @@ pub fn get_register_from_number(num:i32) -> Option<InstructionParamType> {
         1 => Some(REGB),
         2 => Some(REGC),
         3 => Some(REGD),
-        4 => Some(RESERVEREGISTER),
+        4 => Some(RESERVEREGISTER1),
+        5 => Some(RESERVEREGISTER2),
         _ => None
     }
 }

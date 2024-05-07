@@ -32,6 +32,7 @@ pub enum TokenType {
     GetFromStackPointer,
 
     Malloc,
+    Free,
     GetMemory,
     SetMemory,
 
@@ -111,6 +112,7 @@ impl Token {
             "getfromstack" => Token { token_type: TokenType::GetFromStack, value: None },
             "getfromstackpointer" | "getfromsp" => Token { token_type: TokenType::GetFromStackPointer, value: None },
             "malloc" => Token { token_type: TokenType::Malloc, value: None },
+            "free" => Token { token_type: TokenType::Free, value: None },
             "getmem" => Token { token_type: TokenType::GetMemory, value: None },
             "setmem" => Token { token_type: TokenType::SetMemory, value: None },
             "label" => Token { token_type: TokenType::Label, value: None },

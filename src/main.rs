@@ -6,10 +6,9 @@ mod vm;
 mod constants_and_types;
 mod tokens;
 mod parser;
-
 mod generator;
 mod assembler;
-
+mod memory;
 
 fn main() {
     use assembler::Basm;

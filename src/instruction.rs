@@ -44,9 +44,13 @@ pub enum Instruction {
 
     SetStack(InstructionParamType,InstructionParamType),
     SetFromStackPointer(InstructionParamType,InstructionParamType),
+    /// Creates a new memory unit and pushs the unit id of the created unit on to the stack
     Malloc(InstructionParamType),
-    GetMemory(InstructionParamType,InstructionParamType),
-    SetMemory(InstructionParamType,InstructionParamType),
+    Free(InstructionParamType),
+    //       Memory unit id        dest                 offset 
+    GetMemory(InstructionParamType,InstructionParamType,InstructionParamType),
+    //       Memory unit id        src                 offset 
+    SetMemory(InstructionParamType,InstructionParamType,InstructionParamType),
 
 
     Or(InstructionParamType,InstructionParamType),
@@ -102,8 +106,7 @@ impl Instruction {
             Addf(a,b) | Subf(a,b) | Divf(a,b) | Mulf(a,b) | Modf(a,b) | 
             Compare(a,b) |
             GetFromStack(a,b) | GetFromStackPointer(a,b) | SetFromStackPointer(a,b) | SetStack(a,b) |
-            GetMemory(a,b) |
-            SetMemory(a,b) |
+            
             Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)|
             GetFlag(a,b) |
 
@@ -128,7 +131,9 @@ impl Instruction {
                 TruncateStack(a)|
                 Not(a)| 
                 GetStackPointer(a)|
-                Write(a)
+                Write(a)|
+                Malloc(a) | 
+                Free(a)
                 => {
                     let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
                     let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
@@ -177,6 +182,21 @@ impl Instruction {
                 instr_binary.append(&mut a_binary);
                 return instr_binary
             } 
+
+            GetMemory(a,b,c) |
+            SetMemory(a,b,c) => {
+                let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
+                let mut b_binary = to_binary_slice!(InstructionParamType, *b).to_vec();
+                let mut c_binary = to_binary_slice!(InstructionParamType, *c).to_vec();
+
+                let mut instr_binary = to_binary_slice!(InstructionNameBinaryType,self.get_instruction_number()).to_vec();
+                instr_binary.append(&mut a_binary);
+                instr_binary.append(&mut b_binary);
+                instr_binary.append(&mut c_binary);
+                return instr_binary 
+               
+            }
+
             _ => {
                 panic!("Unimplemented: {:?}",self);
             }
@@ -188,54 +208,55 @@ impl Instruction {
         use Instruction::*;
         match self {
             Halt => 0,
-            Mov(_, _) => 1,
-            Add(_, _) => 2,
-            Sub(_, _) => 3,
-            Mul(_, _) => 4,
-            Div(_, _) => 5,
-            Mod(_, _) => 6,
-            Display(_) => 7,
-            Push(_) => 8,
-            PushRegister(_) => 9,
-            Pop(_) => 10,
-            Jump(_) => 11,
-            JumpIfZero(_) => 12,
-            JumpIfNotZero(_) => 13,
-            JumpIfEqual(_) => 14,
-            JumpIfNotEqual(_) => 15,
-            JumpIfGreater(_) => 16,
-            JumpIfLess(_) => 17,
-            Compare(_, _) => 18,
-            GetFromStack(_, _) => 19,
-            GetFromStackPointer(_, _) => 20,
-            SetFromStackPointer(_, _) => 21,
-            Malloc(_) => 22,
-            GetMemory(_, _) => 23,
-            SetMemory(_, _) => 24,
-            Or(_, _) => 25,
-            And(_, _) => 26,
-            Not(_) => 27,
-            Xor(_, _) => 28,
-            Nand(_, _) => 29,
-            TruncateStack(_) => 30,
-            Movf(_, _) => 31,
-            Addf(_, _) => 32,
-            Subf(_, _) => 33,
-            Displayf(_) => 34,
-            Mulf(_, _) => 35,
-            Divf(_, _) => 36,
-            Modf(_, _) => 37,
+            Mov(..) => 1,
+            Add(..) => 2,
+            Sub(..) => 3,
+            Mul(..) => 4,
+            Div(..) => 5,
+            Mod(..) => 6,
+            Display(..) => 7,
+            Push(..) => 8,
+            PushRegister(..) => 9,
+            Pop(..) => 10,
+            Jump(..) => 11,
+            JumpIfZero(..) => 12,
+            JumpIfNotZero(..) => 13,
+            JumpIfEqual(..) => 14,
+            JumpIfNotEqual(..) => 15,
+            JumpIfGreater(..) => 16,
+            JumpIfLess(..) => 17,
+            Compare(..) => 18,
+            GetFromStack(..) => 19,
+            GetFromStackPointer(..) => 20,
+            SetFromStackPointer(..) => 21,
+            Malloc(..) => 22,
+            GetMemory(..) => 23,
+            SetMemory(..) => 24,
+            Or(..) => 25,
+            And(..) => 26,
+            Not(..) => 27,
+            Xor(..) => 28,
+            Nand(..) => 29,
+            TruncateStack(..) => 30,
+            Movf(..) => 31,
+            Addf(..) => 32,
+            Subf(..) => 33,
+            Displayf(..) => 34,
+            Mulf(..) => 35,
+            Divf(..) => 36,
+            Modf(..) => 37,
             Return => 38,
-            DisplayValue(_) => 39,
-            PushFloatRegister(_) => 40,
-            PopFloat(_) => 41,
-            DisplayChar(_) => 42,
-            GetFlag(_,_) => 43,
-            SetStack(_,_) => 44,
-            GetStackPointer(_) => 45,
-            TruncateStackRange(_,_) => 46,
-            Call(_) => 47,
-            Write(_) => 48
+            DisplayValue(..) => 39,
+            PushFloatRegister(..) => 40,
+            PopFloat(..) => 41,
+            DisplayChar(..) => 42,
+            GetFlag(..) => 43,
+            SetStack(..) => 44,
+            GetStackPointer(..) => 45,
+            TruncateStackRange(..) => 46,
+            Call(..) => 47,
+            Write(..) => 48,
+            Free(..) => 49
         }
     }
 
@@ -267,8 +288,8 @@ impl Instruction {
             20 => Some(GetFromStackPointer(InstructionParamType::default(), InstructionParamType::default())),
             21 => Some(SetFromStackPointer(InstructionParamType::default(), InstructionParamType::default())),
             22 => Some(Malloc(InstructionParamType::default())),
-            23 => Some(GetMemory(InstructionParamType::default(), InstructionParamType::default())),
-            24 => Some(SetMemory(InstructionParamType::default(), InstructionParamType::default())),
+            23 => Some(GetMemory(InstructionParamType::default(), InstructionParamType::default(), InstructionParamType::default())),
+            24 => Some(SetMemory(InstructionParamType::default(), InstructionParamType::default(), InstructionParamType::default())),
             25 => Some(Or(InstructionParamType::default(), InstructionParamType::default())),
             26 => Some(And(InstructionParamType::default(), InstructionParamType::default())),
             27 => Some(Not(InstructionParamType::default())),
@@ -293,26 +314,26 @@ impl Instruction {
             46 => Some(TruncateStackRange(InstructionParamType::default(),InstructionParamType::default())),
             47 => Some(Call(StringNumberUnion::default())),
             48 => Some(Write(InstructionParamType::default())),
+            49 => Some(Free(InstructionParamType::default())),
             _ => None,
         }
     }
 
-    pub fn get_param_binary_size(&self) -> (Option<usize>,Option<usize>) {
+    pub fn get_param_binary_size(&self) -> (Option<usize>,Option<usize>,Option<usize>) {
         use Instruction::*;
         match self {
-            Halt => { (None,None) },
-            Mov(_,_) => { (Some(REGISTER_PARAM_SIZE),Some(INT_PARAM_SIZE))  }
+            Halt => { (None,None,None) },
+            Mov(_,_) => { (Some(REGISTER_PARAM_SIZE),Some(INT_PARAM_SIZE),None)  }
             Add(_,_) | Sub(_,_) | Div(_,_) | Mul(_,_) | Mod(_,_) |
                 Addf(_,_) | Subf(_,_) | Divf(_,_) | Mulf(_,_) | Modf(_,_) | 
                 Compare(_,_) |
                 GetFromStack(_,_) | GetFromStackPointer(_,_) | SetFromStackPointer(_,_) | SetStack(_,_) |
-                GetMemory(_,_) |
-                SetMemory(_,_) |
+              
                 Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_) |
                 GetFlag(_,_) |
                 TruncateStackRange(_,_)
                 => {
-                    (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
+                    (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE),None)
                 }
 
             Display(_) |
@@ -324,16 +345,18 @@ impl Instruction {
                 TruncateStack(_)|
                 Not(_) |
                 GetStackPointer(_) |
-                Write(_)
+                Write(_)|
+                Malloc(..) |
+                Free(..)
                 => {
-                    (Some(REGISTER_PARAM_SIZE),None)
+                    (Some(REGISTER_PARAM_SIZE),None,None)
                 }
 
             Movf(_,_) => {
-                (Some(REGISTER_PARAM_SIZE),Some(FLOAT_PARAM_SIZE))
+                (Some(REGISTER_PARAM_SIZE),Some(FLOAT_PARAM_SIZE),None)
             }
 
-            Return => { (None,None) } 
+            Return => { (None,None,None) } 
 
 
             Jump(_) |
@@ -344,12 +367,15 @@ impl Instruction {
                 JumpIfGreater(_) |
                 JumpIfLess(_) |
                 Call(_) => {
-                    (Some(JUMP_DESTINATION_PARAM_SIZE),None)
+                    (Some(JUMP_DESTINATION_PARAM_SIZE),None,None)
                 }
 
-                
+              GetMemory(..) |
+                SetMemory(..) => {
+                    (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
+                }               
             _ => {
-                (None,None)
+                (None,None,None)
             }
         }
     }

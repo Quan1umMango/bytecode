@@ -20,7 +20,8 @@ pub const REGA:InstructionParamType = 0;
 pub const REGB:InstructionParamType = 1;
 pub const REGC:InstructionParamType = 2;
 pub const REGD:InstructionParamType = 3;
-pub const RESERVEREGISTER:InstructionParamType = 4;
+pub const RESERVEREGISTER1:InstructionParamType = 4;
+pub const RESERVEREGISTER2:InstructionParamType = 5;
 
 
 
