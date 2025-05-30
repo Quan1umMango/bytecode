@@ -1,10 +1,9 @@
 @import("./factorial.basm") ; Imports the file as well all the labels
 label main:
-  push 8 
+  push 3 
   call factorial
-  @loadstringn("The factorial of 8 is: ") ; See hello_world.basm for more info.
-  pop rax
-  write rax 
-
-  display rcx
+  @loadstringn("The factorial of 3 is: ") ; See hello_world.basm for more info.
+  pop rax 
+  getsp rbx 
+  write rax,rbx 
    

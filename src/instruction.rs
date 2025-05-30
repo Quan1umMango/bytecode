@@ -44,6 +44,7 @@ pub enum Instruction {
 
     SetStack(InstructionParamType,InstructionParamType),
     SetFromStackPointer(InstructionParamType,InstructionParamType),
+    ExtendStack(InstructionParamType, InstructionParamType),
     /// Creates a new memory unit and pushs the unit id of the created unit on to the stack
     Malloc(InstructionParamType),
     Free(InstructionParamType),
@@ -73,7 +74,6 @@ pub enum Instruction {
     PopFloat(InstructionParamType),
     Return,
 
-    DisplayValue(InstructionParamType),
     DisplayChar(InstructionParamType),
     
     GetFlag(InstructionParamType,InstructionParamType),
@@ -82,8 +82,9 @@ pub enum Instruction {
     
     // prints string from the stack 
     // arg 1: len of the string.
+    // arg 2: end location of string.
     // prints until it reaches a null character or the string len
-    Write(InstructionParamType)
+    Write(InstructionParamType,InstructionParamType),
 }
 
 impl Instruction {
@@ -110,8 +111,10 @@ impl Instruction {
             Or(a,b) | And(a,b) | Xor(a,b) | Nand(a,b)|
             GetFlag(a,b) |
 
-            TruncateStackRange(a,b)
-                => {
+            TruncateStackRange(a,b) | 
+            ExtendStack(a,b) |
+            Write(a,b)
+            => {
                 
                 let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
                 let mut b_binary = to_binary_slice!(InstructionParamType,*b).to_vec();
@@ -131,7 +134,6 @@ impl Instruction {
                 TruncateStack(a)|
                 Not(a)| 
                 GetStackPointer(a)|
-                Write(a)|
                 Malloc(a) | 
                 Free(a)
                 => {
@@ -246,7 +248,7 @@ impl Instruction {
             Divf(..) => 36,
             Modf(..) => 37,
             Return => 38,
-            DisplayValue(..) => 39,
+            ExtendStack(..) => 39,
             PushFloatRegister(..) => 40,
             PopFloat(..) => 41,
             DisplayChar(..) => 42,
@@ -304,7 +306,7 @@ impl Instruction {
             36 => Some(Divf(InstructionParamType::default(), InstructionParamType::default())),
             37 => Some(Modf(InstructionParamType::default(), InstructionParamType::default())),
             38 => Some(Return),
-            39 => Some(DisplayValue(InstructionParamType::default())),
+            39 => Some(ExtendStack(InstructionParamType::default(),InstructionParamType::default())),
             40 => Some(PushFloatRegister(InstructionParamType::default())),
             41 => Some(PopFloat(InstructionParamType::default())),
             42 => Some(DisplayChar(InstructionParamType::default())),
@@ -313,7 +315,7 @@ impl Instruction {
             45 => Some(GetStackPointer(InstructionParamType::default())),
             46 => Some(TruncateStackRange(InstructionParamType::default(),InstructionParamType::default())),
             47 => Some(Call(StringNumberUnion::default())),
-            48 => Some(Write(InstructionParamType::default())),
+            48 => Some(Write(InstructionParamType::default(),InstructionParamType::default())),
             49 => Some(Free(InstructionParamType::default())),
             _ => None,
         }
@@ -331,7 +333,9 @@ impl Instruction {
               
                 Or(_,_) | And(_,_) | Xor(_,_) | Nand(_,_) |
                 GetFlag(_,_) |
-                TruncateStackRange(_,_)
+                TruncateStackRange(_,_) | 
+                ExtendStack(..) |
+                Write(_,_)
                 => {
                     (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE),None)
                 }
@@ -345,7 +349,6 @@ impl Instruction {
                 TruncateStack(_)|
                 Not(_) |
                 GetStackPointer(_) |
-                Write(_)|
                 Malloc(..) |
                 Free(..)
                 => {

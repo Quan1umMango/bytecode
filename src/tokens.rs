@@ -79,6 +79,7 @@ pub enum TokenType {
     Flag,
     GetStackPointer,
     TruncateStackRange,
+    ExtendStack,
     Write, 
 }
 
@@ -129,6 +130,7 @@ impl Token {
             "mod" => Token {token_type:TokenType::Mod,value:None},
             "setfromsp" => Token {token_type:TokenType::SetFromStackPointer,value:None},
             "setstack" => Token {token_type:TokenType::SetStack,value:None},
+            "extendstack" => Token {token_type:TokenType::ExtendStack, value:None},
             "movf" => Token { token_type: TokenType::Movf, value: None },
             "addf" => Token { token_type: TokenType::Addf, value: None },
             "subf" => Token { token_type: TokenType::Subf, value: None },

@@ -98,8 +98,9 @@ impl Generator {
                     }
 
                 }
-
-                _ => () 
+                NodeBuiltin::NodeBuiltinLoadString { value:_, load_len:_} => {
+                   dbg!("alrady done while parsing"); 
+                }
             }
         }
         out
@@ -139,7 +140,8 @@ impl Generator {
                             }
                         }
                         NodeExpr::NodeExprIntLit { value } => {
-                            self.vm.add_instruction(Instruction::DisplayValue(value.value.clone().unwrap().parse::<InstructionParamType>().unwrap())); 
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap()));
+                            self.vm.add_instruction(Instruction::Display(RESERVEREGISTER1)); 
                         },
                         _ => unreachable!()
                     }
@@ -410,10 +412,8 @@ NodeInstructionDisplayChar { value } => {
                         }
                         NodeExpr::NodeExprIntLit { value } => {
                             let val = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::PushRegister(dest+1));
-                            self.vm.add_instruction(Instruction::Mov(dest+1,val+1));
-                            self.vm.add_instruction(Instruction::GetFromStackPointer(dest+1,dest));
-                            self.vm.add_instruction(Instruction::Pop(dest+1));
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,val));
+                            self.vm.add_instruction(Instruction::GetFromStackPointer(RESERVEREGISTER1,dest));
                         }
                         _ => unreachable!()
                     };
@@ -812,10 +812,8 @@ NodeInstructionDisplayChar { value } => {
                     match rhs  {
                         NodeExpr::NodeExprIntLit{value} => {
                             let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::PushRegister(reg+1));
-                            self.vm.add_instruction(Instruction::Mov(reg+1,int));
-                            self.vm.add_instruction(Instruction::TruncateStackRange(reg,reg+1));
-                            self.vm.add_instruction(Instruction::Pop(reg+1));
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
+                            self.vm.add_instruction(Instruction::TruncateStackRange(reg,RESERVEREGISTER1));
                         }
                         NodeExpr::NodeExprRegister{value:_} => {
                             self.vm.add_instruction(Instruction::TruncateStackRange(reg,get_register(&rhs))); 
@@ -824,6 +822,22 @@ NodeInstructionDisplayChar { value } => {
                     }
 
                 }
+                NodeInstructionExtendStack { extend_by, default_value } => {
+                    let reg = get_register(&extend_by);
+                    match default_value  {
+                        NodeExpr::NodeExprIntLit{value} => {
+                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
+                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
+                            self.vm.add_instruction(Instruction::ExtendStack(reg,RESERVEREGISTER1));
+                        }
+                        NodeExpr::NodeExprRegister{value:_} => {
+                            self.vm.add_instruction(Instruction::ExtendStack(reg,get_register(&default_value))); 
+                        }
+                        _ => unreachable!()
+                    }
+
+                }
+
 
                 NodeInstructionCall { value } => {
                     match value {
@@ -839,26 +853,46 @@ NodeInstructionDisplayChar { value } => {
                     }
                 }
 
-                NodeInstructionWrite { value } => {
-                    match value {
-                        NodeExpr::NodeExprIntLit { value } => {
-                            let int = value.value.clone().unwrap().parse::<iInstructionParamType>().unwrap();
-                            self.vm.add_instruction(Instruction::Mov(RESERVEREGISTER1,int));
-                            self.vm.add_instruction(Instruction::Write(RESERVEREGISTER1));
-
-                        }
-                        NodeExpr::NodeExprRegister { value:_ } => {
-                            self.vm.add_instruction(Instruction::Write(get_register(&value)));
-                        }
-                        _ => unreachable!()
-                    }
+                NodeInstructionWrite { len, str_loc } => {
+                   self.get_int_value_as_reserve_register1(len.clone());
+                    self.get_int_value_as_reserve_register2(str_loc.clone());
+                    self.vm.add_instruction(Instruction::Write(RESERVEREGISTER1,RESERVEREGISTER2));
                 }
 
             }
         }
     }
+    fn get_int_value_as_register(&mut self, register_dest:InstructionParamType,expr:NodeExpr) {
+        match expr {
+            NodeExpr::NodeExprIntLit { value } => {
+                self.vm.add_instruction(Instruction::Mov(register_dest,value.value.unwrap().as_str().parse().unwrap()));
+            }
+            NodeExpr::NodeExprRegister { value } => {
+                let reg =get_register_value(value.clone());
+                if reg.is_none() {
+                    println!("Generation Error: Invalid register {}",value.value.clone().unwrap_or("".to_string()));
+                    std::process::exit(1);
+                }
+                self.vm.add_instruction(Instruction::PushRegister(reg.unwrap()));
+                self.vm.add_instruction(Instruction::Pop(register_dest));
+            }
+            _ => {
+                // Should not come to this
+                println!("Generation Error: Cannot get integer value of expr");
+                std::process::exit(1);
+            }
+        }
 
+    }
+
+    pub fn get_int_value_as_reserve_register1(&mut self,v:NodeExpr) {
+        self.get_int_value_as_register(RESERVEREGISTER1,v);
+    }
+    pub fn get_int_value_as_reserve_register2(&mut self,v:NodeExpr) {
+        self.get_int_value_as_register(RESERVEREGISTER2,v);
+    }
 }
+
 
 pub fn get_register_value(reg:Token) -> Option<InstructionParamType> {
     if reg.token_type != TokenType::Register { return None };

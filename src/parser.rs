@@ -74,6 +74,7 @@ pub enum NodeInstruction  {
     NodeInstructionNand {lhs:NodeExpr, rhs:NodeExpr},
 
     NodeInstructionTruncateStack {value:NodeExpr},
+    NodeInstructionExtendStack { extend_by:NodeExpr, default_value:NodeExpr},
 
     NodeInstructionMovf {lhs:NodeExpr,rhs:NodeExpr},
     NodeInstructionAddf {lhs:NodeExpr, rhs:NodeExpr},
@@ -86,14 +87,10 @@ pub enum NodeInstruction  {
     NodeInstructionGetFlag { lhs: NodeExpr, rhs:NodeExpr},
     NodeInstructionGetStackPointer {lhs:NodeExpr},
     NodeInstructionTruncateStackRange {lhs:NodeExpr,rhs:NodeExpr},
-    NodeInstructionWrite {value:NodeExpr},
+    NodeInstructionWrite {len:NodeExpr,str_loc:NodeExpr},
 }
 
 
-#[derive(Debug,Clone)]
-pub struct NodeLabel {
-    pub insts:Vec<NodeInstruction>
-}
 
 
 impl  Parser {
@@ -873,7 +870,7 @@ impl  Parser {
 
     #[allow(unused_assignments)]
     pub fn parse_truncstackrange(&mut self) -> Option<NodeInstruction> {
-         if let Some(_getsp_tok) = self.try_consume(TokenType::TruncateStackRange) {
+         if let Some(_tok) = self.try_consume(TokenType::TruncateStackRange) {
             let mut lhs:Option<NodeExpr> = None;
             let mut rhs: Option<NodeExpr> = None;
             if let Some(int) = self.try_consume(TokenType::IntLit) {
@@ -900,6 +897,41 @@ impl  Parser {
                 std::process::exit(1);
             }
             return Some(NodeInstruction::NodeInstructionTruncateStackRange{lhs:lhs.unwrap(),rhs:rhs.unwrap()})
+
+        }
+        None
+    }
+    #[allow(unused_assignments)]
+    pub fn parse_extend_stack(&mut self) -> Option<NodeInstruction> {
+         if let Some(_tok) = self.try_consume(TokenType::ExtendStack) {
+            let mut lhs:Option<NodeExpr> = None;
+            let mut rhs: Option<NodeExpr> = None;
+    
+            if let Some(int) = self.try_consume(TokenType::IntLit) {
+                todo!("use register instead of integer for extend stack 1st argument");
+                lhs = Some(NodeExpr::NodeExprIntLit{value:int});
+            }else if let Some(reg) = self.try_consume(TokenType::Register) {
+                lhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else {
+                println!("Expected either integer or register as the amoount to extend stack from.");
+                std::process::exit(1);
+            }
+            if self.try_consume(TokenType::Comma).is_none() {
+                println!("Expected Comma, found:{:?}",self.peek_token());
+                std::process::exit(1);
+            }
+
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                rhs =Some(NodeExpr::NodeExprRegister{value:reg});
+            }else if let Some(int) = self.try_consume(TokenType::IntLit) {
+                rhs =Some(NodeExpr::NodeExprIntLit{value:int});
+
+
+            }else {
+                println!("Expected either integer or register as defualt value to extend stack from.");
+                std::process::exit(1);
+            }
+            return Some(NodeInstruction::NodeInstructionExtendStack{extend_by:lhs.unwrap(),default_value:rhs.unwrap()})
 
         }
         None
@@ -1320,18 +1352,36 @@ impl  Parser {
 
     pub fn parse_write(&mut self) -> Option<NodeInstruction> {
         if self.try_consume(TokenType::Write).is_none() { return None }
-        if let Some(reg) = self.try_consume(TokenType::Register) {
-            return Some(NodeInstruction::NodeInstructionWrite {
-                value: NodeExpr::NodeExprRegister{value:reg}
-            })
-        }else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
-            return Some(NodeInstruction::NodeInstructionWrite {
-                value: NodeExpr::NodeExprIntLit{value:int_lit}
-            })
-        }else {
-            println!("Expected either register or integer literal for write, found {:?}",self.peek_token());
-            std::process::exit(1);
+        let len = {
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                NodeExpr::NodeExprRegister{value:reg}
+                
+            }else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+                NodeExpr::NodeExprIntLit{value:int_lit}
+            }else {
+                println!("Expected either register or integer literal for length argument of write , found {:?}",self.peek_token());
+                std::process::exit(1);
+            }
+        };
+        if self.try_consume(TokenType::Comma).is_none() {
+ println!(" Expected , found {:?}",self.peek_token());
+                std::process::exit(1);
+ 
         }
+        let str_loc = {
+            if let Some(reg) = self.try_consume(TokenType::Register) {
+                NodeExpr::NodeExprRegister{value:reg}
+                
+            }else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+                NodeExpr::NodeExprIntLit{value:int_lit}
+            }else {
+                println!("Expected either register or integer literal for location argument of write, found {:?}",self.peek_token());
+                std::process::exit(1);
+            }
+        };
+        return Some(NodeInstruction::NodeInstructionWrite {
+            str_loc,len
+        })
     }
 
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
@@ -1443,6 +1493,9 @@ impl  Parser {
             }
             if let Some(trunstack) = self.parse_truncate_stack() {
                 return Some(trunstack)
+            }
+            if let Some(extend_stack) = self.parse_extend_stack() {
+                return Some(extend_stack)
             }
 
             if let Some(malloc) = self.parse_malloc() {
@@ -1556,22 +1609,22 @@ impl  Parser {
                                                 }
                                             }
                                         }
-                                    );
-                                        self.instruction_counter +=1;
+                                        );
+                                    self.instruction_counter +=1;
                                 }
                                 if !load_len { continue }
                                 // Push length of string 
-                                    self.instructions.push(
-                                        NodeInstruction::NodeInstructionPush{
-                                            value:NodeExpr::NodeExprIntLit{
-                                                value:Token {
-                                                    value: Some(value.value.unwrap().len().to_string()),
-                                                    token_type: TokenType::IntLit,
-                                                }
+                                self.instructions.push(
+                                    NodeInstruction::NodeInstructionPush{
+                                        value:NodeExpr::NodeExprIntLit{
+                                            value:Token {
+                                                value: Some(value.value.unwrap().len().to_string()),
+                                                token_type: TokenType::IntLit,
                                             }
                                         }
+                                    }
                                     );
-                                        self.instruction_counter += 1;
+                                self.instruction_counter += 1;
                            }
                            _ => unreachable!()
                        } 

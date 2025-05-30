@@ -97,7 +97,9 @@ impl VM {
                  
                         Or(ref mut a, ref mut b) | And(ref mut a, ref mut b) | Xor(ref mut a, ref mut b) | Nand(ref mut a, ref mut b) |
                         GetFlag(ref mut a, ref mut b) |
-                        TruncateStackRange(ref mut a, ref mut b)
+                        TruncateStackRange(ref mut a, ref mut b) |
+                        Write(ref mut a, ref mut b) |
+                        ExtendStack(ref mut a, ref mut b)
 
                         => {
 
@@ -125,7 +127,6 @@ impl VM {
                         TruncateStack(ref mut a)|
                             Not(ref mut a) |
                         GetStackPointer(ref mut a) | 
-                        Write(ref mut a) |
                         Malloc(ref mut a) |
                         Free(ref mut a)
                             => {
@@ -306,10 +307,6 @@ impl VM {
                 let twos_comp = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,real_num);
                 println!("{:?}",twos_comp);
             }
-          DisplayValue(a) => {
-                
-                println!("{:?}",a);
-            }
             Push(a) => {
 
                 let  a =  to_binary_slice!(RegisterDataType,twos_complement!(RegisterDataType,*a));
@@ -443,7 +440,6 @@ impl VM {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
-              
                 let index = sp -1- regoffset as usize;
                 if let Some(content) = self.stack.get(index) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
@@ -475,6 +471,20 @@ impl VM {
                 self.stack[index] =  to_binary_slice!(RegisterDataType,self.registers[reg as usize]).as_slice().try_into().unwrap();
                 
 
+            }
+
+            ExtendStack(extend_by, default_value) => {
+                let extend_by = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[*extend_by as usize]);
+                let default_value = to_binary_slice!(RegisterDataType,self.registers[*default_value as usize]).try_into().unwrap();
+                if extend_by < 0 {
+                    panic!("Cannot extend stack by negative number {:?}",extend_by);
+                }
+                //  i hate this    self.stack.append(
+                //        &mut std::iter::repeat(to_binary_slice!(RegisterDataType,default_value)).take(extend_by as usize).collect::<Vec<[u8;STACK_DATA_SIZE]>>().into()); 
+                for _ in 0..extend_by {
+                    self.stack.push(default_value);
+                }
+                self.sp += extend_by as usize;
             }
 
             Malloc(sizereg) => {
@@ -684,21 +694,16 @@ impl VM {
                 let dest = *dest;
                 self.registers[dest as usize] = twos_complement!(RegisterDataType,self.sp as iRegisterDataType);
             }
-            Write(len_reg) => {
+            Write(len_reg,str_loc) => {
                 use std::io::Write;
-                let len_reg = *len_reg;
-                let len = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[len_reg as usize]);
-                if len < 0 {
-                    println!("Runtime Error: Exxpected postive integer to write, found {}",len);
-                    std::process::exit(1);
-                }
-
-                let chars = self.stack.drain(self.stack.len()-len as usize..)
+                let len = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[*len_reg as usize]) as usize;
+                let str_loc = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[*str_loc as usize]) as usize;
+                let chars = self.stack.get(str_loc-len..str_loc).unwrap_or(Vec::new().as_slice())
+                    .into_iter()
                     .map(|x|TryInto::<u8>::try_into(
                             integer_from_twos_complement!(iRegisterDataType,RegisterDataType,binary_slice_to_number!(iRegisterDataType,x))).unwrap_or(0) as char)
                     .collect::<Vec<char>>()
                     .into_iter().collect::<String>();                                
-
                 print!("{}",chars);
                 match std::io::stdout().flush() {
                     Ok(_) => (),
@@ -764,6 +769,18 @@ impl VM {
     pub fn eval_raw(&mut self) {
         loop {
             self.run_current_inst();
+            let rax = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[0]);
+            let rbx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[1]);
+            let rcx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[2]);
+            let rdx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[3]);
+            let stk_ = self.stack.clone();
+            let mut stk = Vec::new();
+            for num_binary in stk_.iter() {
+                let int = binary_slice_to_number!(RegisterDataType,num_binary);
+                let int_twos_comp = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,int);
+                stk.push(int_twos_comp);
+            }
+            println!("{}: rax: {rax}; rbx: {rbx}; rcx: {rcx}; rdx: {rdx};\nStack: {:?}\n________",self.command_pointer+1,stk);
             self.command_pointer += 1;
         }
     }
