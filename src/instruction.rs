@@ -85,6 +85,13 @@ pub enum Instruction {
     // arg 2: end location of string.
     // prints until it reaches a null character or the string len
     Write(InstructionParamType,InstructionParamType),
+
+    /// Copies the of in stack to another location
+    /// arg 1: start location of the data to copy. value is relative to the sp
+    /// arg 2: end location of the data to copy. value is relative to the sp
+    /// arg 3: start location of the new location to copy the data. value is relative to the sp 
+    StackCopyBackSp(InstructionParamType,InstructionParamType,InstructionParamType),
+
 }
 
 impl Instruction {
@@ -186,7 +193,9 @@ impl Instruction {
             } 
 
             GetMemory(a,b,c) |
-            SetMemory(a,b,c) => {
+            SetMemory(a,b,c) |  
+	    StackCopyBackSp(a,b,c) => {
+
                 let mut a_binary = to_binary_slice!(InstructionParamType,*a).to_vec();
                 let mut b_binary = to_binary_slice!(InstructionParamType, *b).to_vec();
                 let mut c_binary = to_binary_slice!(InstructionParamType, *c).to_vec();
@@ -198,6 +207,7 @@ impl Instruction {
                 return instr_binary 
                
             }
+
 
             _ => {
                 panic!("Unimplemented: {:?}",self);
@@ -258,7 +268,9 @@ impl Instruction {
             TruncateStackRange(..) => 46,
             Call(..) => 47,
             Write(..) => 48,
-            Free(..) => 49
+            Free(..) => 49,
+	    StackCopyBackSp(..) => 50,
+	    
         }
     }
 
@@ -317,7 +329,8 @@ impl Instruction {
             47 => Some(Call(StringNumberUnion::default())),
             48 => Some(Write(InstructionParamType::default(),InstructionParamType::default())),
             49 => Some(Free(InstructionParamType::default())),
-            _ => None,
+            50 => Some(StackCopyBackSp(InstructionParamType::default(), InstructionParamType::default(), InstructionParamType::default())),
+            _ => unimplemented!(),
         }
     }
 
@@ -374,7 +387,8 @@ impl Instruction {
                 }
 
               GetMemory(..) |
-                SetMemory(..) => {
+                SetMemory(..) |
+		StackCopyBackSp(..) => {
                     (Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE),Some(REGISTER_PARAM_SIZE))
                 }               
             _ => {

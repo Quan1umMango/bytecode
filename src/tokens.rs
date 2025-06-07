@@ -81,6 +81,8 @@ pub enum TokenType {
     TruncateStackRange,
     ExtendStack,
     Write, 
+
+    StackCopyBackSp,
 }
 
 #[derive(Debug,Clone,PartialEq)]
@@ -144,6 +146,7 @@ impl Token {
             "getflag" => Token {token_type:TokenType::GetFlag, value:None},
             "getsp" => Token {token_type:TokenType::GetStackPointer, value:None},
             "write" => Token {token_type:TokenType::Write, value:None},
+            "stkcpybacksp" => Token {token_type:TokenType::StackCopyBackSp, value:None},
             _ => { 
                 let is_reg = REGISTERS.iter().find(|x| ***x == *word.to_lowercase().as_str());
                 let is_freg = FLOAT_REGISTERS.iter().find(|x| ***x == *word.to_lowercase().as_str());

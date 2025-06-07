@@ -88,8 +88,8 @@ pub enum NodeInstruction  {
     NodeInstructionGetStackPointer {lhs:NodeExpr},
     NodeInstructionTruncateStackRange {lhs:NodeExpr,rhs:NodeExpr},
     NodeInstructionWrite {len:NodeExpr,str_loc:NodeExpr},
+    NodeInstructionStackCopyBackSp {start_loc:NodeExpr, end_loc:NodeExpr, dst_start_loc:NodeExpr},
 }
-
 
 
 
@@ -1384,6 +1384,58 @@ impl  Parser {
         })
     }
 
+    pub fn parse_stkcpybacksp(&mut self) -> Option<NodeInstruction> {
+		if self.try_consume(TokenType::StackCopyBackSp).is_none() { return None; }
+		let start_loc  = {
+			if let Some(reg) = self.try_consume(TokenType::Register) {
+				NodeExpr::NodeExprRegister{value:reg}
+
+			}else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+				NodeExpr::NodeExprIntLit{value:int_lit}
+			}else {
+				println!("Expected either register or integer literal for start stack location data fof stkcpybacksp , found {:?}",self.peek_token());
+				std::process::exit(1);
+			}
+		};
+		if self.try_consume(TokenType::Comma).is_none() {
+			println!(" Expected , found {:?}",self.peek_token());
+			std::process::exit(1);
+
+		}
+		let end_loc  = {
+			if let Some(reg) = self.try_consume(TokenType::Register) {
+				NodeExpr::NodeExprRegister{value:reg}
+
+			}else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+				NodeExpr::NodeExprIntLit{value:int_lit}
+			}else {
+				println!("Expected either register or integer literal for end stack location data fof stkcpybacksp , found {:?}",self.peek_token());
+				std::process::exit(1);
+			}
+		};
+		if self.try_consume(TokenType::Comma).is_none() {
+			println!(" Expected , found {:?}",self.peek_token());
+			std::process::exit(1);
+
+		}
+
+		let dst_start_loc  = {
+			if let Some(reg) = self.try_consume(TokenType::Register) {
+				NodeExpr::NodeExprRegister{value:reg}
+
+			}else if let Some(int_lit) = self.try_consume(TokenType::IntLit) {
+				NodeExpr::NodeExprIntLit{value:int_lit}
+			}else {
+				println!("Expected either register or integer literal for dest start stack location data fof stkcpybacksp , found {:?}",self.peek_token());
+				std::process::exit(1);
+			}
+		};
+		return Some(NodeInstruction::NodeInstructionStackCopyBackSp {
+				start_loc, end_loc, dst_start_loc
+		});
+
+    }
+
     pub fn parse_inst(&mut self) -> Option<NodeInstruction> {
         while let Some(_cur_token) = self.peek_token() {
 
@@ -1524,7 +1576,10 @@ impl  Parser {
             }
             if let Some(write) = self.parse_write(){
                 return Some(write);
-            }
+	    }
+	    if let Some(stkcpybacksp) = self.parse_stkcpybacksp() {
+		    return Some(stkcpybacksp);
+	    }
             else {
                 break;
             }

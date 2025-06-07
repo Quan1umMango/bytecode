@@ -15,9 +15,12 @@ use crate::{
 
 use std::collections::HashMap;
 pub struct VM {
-    registers: [RegisterDataType;6],
+    registers: [RegisterDataType;7],
     floating_point_registers: [FloatRegisterDataType;5],
     stack:Vec<[u8;STACK_DATA_SIZE]>,
+   
+    // points to the position where the next element of the stack will be added
+    // default value is 0
     sp:usize,
     instructions:[Instruction;1000],
     command_pointer: usize, 
@@ -32,7 +35,7 @@ impl VM {
     pub fn new() -> Self {
         const ARRAY_REPEAT_VALUE:Instruction = Instruction::Halt;
         Self {
-            registers: [0; 6],
+            registers: [0; 7],
             floating_point_registers: [0.0;5],
             stack: Vec::new(),
             sp: 0,
@@ -221,7 +224,8 @@ impl VM {
 
                         }
                         GetMemory(ref mut a, ref mut b, ref mut c) |
-                            SetMemory(ref mut a, ref mut b, ref mut c) => {
+                            SetMemory(ref mut a, ref mut b, ref mut c) | 
+                            StackCopyBackSp(ref mut a, ref mut b, ref mut c) => {
                                 if param_size.0.is_none() {
                                     println!("Bytecode Error: Argument 0 not found for {:?}",instruction.clone());
                                     std::process::exit(1);
@@ -440,7 +444,7 @@ impl VM {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
-                let index = sp -1- regoffset as usize;
+                let index = sp - regoffset as usize;
                 if let Some(content) = self.stack.get(index) {
                     self.registers[reg as usize] = binary_slice_to_number!(RegisterDataType,content);
                 }else {
@@ -464,7 +468,7 @@ impl VM {
                 let (offset,reg) = (*offset,*reg);
                 let sp = self.sp;
                 let regoffset = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[offset as usize]);
-                let index = sp  -1- regoffset as usize;
+                let index = sp - regoffset as usize;
                 if index >= self.stack.len() {
                     panic!("Cannot set element number: {:?}  from stack pointer from stack with total items: {:?}",sp,self.stack.len());
                 }
@@ -611,6 +615,7 @@ impl VM {
                 for _ in 0..val {
                     self.stack.pop();
                 }
+		self.sp -= val as usize;
             }
             TruncateStackRange(rega,regb) => {
                 let (rega,regb) = (*rega,*regb); 
@@ -713,6 +718,33 @@ impl VM {
                     }
                 }
             }
+	    StackCopyBackSp(start_loc_rel,end_loc_rel,dest_loc_rel) => {
+		let (start_loc_rel,end_loc_rel,dest_loc_rel) = (*start_loc_rel,*end_loc_rel,*dest_loc_rel);
+		let start_loc_rel = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[start_loc_rel as usize]) as usize;
+		let end_loc_rel = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[end_loc_rel as usize]) as usize;
+		let dest_loc_rel = integer_from_twos_complement!(iInstructionParamType,InstructionParamType,self.registers[dest_loc_rel as usize]) as usize;
+		let sp = self.sp as usize;
+		if(sp == 0) {
+			panic!("Stack is empty");
+		}
+		let start_loc = sp-start_loc_rel as usize;
+		let end_loc = sp-end_loc_rel as usize;
+		let data_size = end_loc-start_loc;
+		let dest_loc = sp-dest_loc_rel;
+
+		
+		// amount of extra stack needed to allocate data ; usefull only when you want to shift data ahead
+		let needed_stack_size = data_size as isize-((self.stack.len()-sp) as isize)-1;
+		if needed_stack_size > 0 {
+			self.stack.resize(self.stack.len()+needed_stack_size as usize,[0;32]);
+		}
+		//self.stack[sp-dest_loc_rel..sp-dest_loc_rel+data_size] = self.stack[sp-start_loc_rel..sp-end_loc_rel];	
+		let data_to_move = &self.stack.clone()[sp-start_loc_rel..sp-end_loc_rel];
+		for i in 0..data_size {
+			self.stack[sp-dest_loc_rel+i] = data_to_move[i]; 
+		}
+		
+	    }
             _ => unimplemented!()
 
         }
@@ -766,10 +798,11 @@ impl VM {
      pub fn eval(&mut self) {
          self.run_label_inst("main".to_string(),true);
      }
+
     pub fn eval_raw(&mut self) {
         loop {
             self.run_current_inst();
-            let rax = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[0]);
+            /*let rax = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[0]);
             let rbx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[1]);
             let rcx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[2]);
             let rdx = integer_from_twos_complement!(iRegisterDataType,RegisterDataType,self.registers[3]);
@@ -781,6 +814,7 @@ impl VM {
                 stk.push(int_twos_comp);
             }
             println!("{}: rax: {rax}; rbx: {rbx}; rcx: {rcx}; rdx: {rdx};\nStack: {:?}\n________",self.command_pointer+1,stk);
+	     */
             self.command_pointer += 1;
         }
     }

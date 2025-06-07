@@ -858,6 +858,12 @@ NodeInstructionDisplayChar { value } => {
                     self.get_int_value_as_reserve_register2(str_loc.clone());
                     self.vm.add_instruction(Instruction::Write(RESERVEREGISTER1,RESERVEREGISTER2));
                 }
+		NodeInstructionStackCopyBackSp {start_loc, end_loc, dst_start_loc } => {
+			self.get_int_value_as_reserve_register1(start_loc.clone());
+			self.get_int_value_as_reserve_register2(end_loc.clone());
+			self.get_int_value_as_reserve_register3(dst_start_loc.clone());
+			self.vm.add_instruction(Instruction::StackCopyBackSp(RESERVEREGISTER1,RESERVEREGISTER2,RESERVEREGISTER3));
+     		}	
 
             }
         }
@@ -890,6 +896,10 @@ NodeInstructionDisplayChar { value } => {
     }
     pub fn get_int_value_as_reserve_register2(&mut self,v:NodeExpr) {
         self.get_int_value_as_register(RESERVEREGISTER2,v);
+    }
+
+    pub fn get_int_value_as_reserve_register3(&mut self,v:NodeExpr) {
+        self.get_int_value_as_register(RESERVEREGISTER3,v);
     }
 }
 
